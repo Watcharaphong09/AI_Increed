@@ -100,10 +100,23 @@ export interface RoleOverride {
 }
 
 export interface Settings {
-  provider: AIProvider
-  api_key: string // masked after save
-  base_url: string
-  model: string
+  ai_provider?: string
+  ai_base_url?: string
+  ai_api_key_masked?: string
+  ai_model?: string
+  planner_provider?: string
+  planner_base_url?: string
+  planner_api_key_masked?: string
+  planner_model?: string
+  reviewer_provider?: string
+  reviewer_base_url?: string
+  reviewer_api_key_masked?: string
+  reviewer_model?: string
+  // Legacy aliases
+  provider?: AIProvider
+  api_key?: string
+  base_url?: string
+  model?: string
   planner_override?: RoleOverride
   reviewer_override?: RoleOverride
 }

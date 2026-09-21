@@ -1,5 +1,8 @@
 import clsx from 'clsx'
+import { useQuery } from '@tanstack/react-query'
+import { Sparkles, Bot } from 'lucide-react'
 import { useAppStore } from '../store/appStore'
+import { getSettings } from '../api/settings'
 import type { PlanningMode, ProjectStatus } from '../types'
 
 function modeColor(mode: PlanningMode): string {
@@ -44,7 +47,20 @@ function statusLabel(status: ProjectStatus): string {
 export default function StatusBar() {
   const { currentProject } = useAppStore()
 
+  const { data: aiSettings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: getSettings,
+    staleTime: 30000,
+  })
+
   if (!currentProject) return null
+
+  const isGemini =
+    !aiSettings ||
+    aiSettings.base_url?.includes('googleapis') ||
+    aiSettings.model?.toLowerCase().includes('gemini')
+
+  const modelName = aiSettings?.model || (isGemini ? 'gemini-2.5-flash' : 'gpt-4o-mini')
 
   return (
     <div className="h-9 bg-gray-900 border-t border-gray-800 flex items-center px-4 gap-3 shrink-0">
@@ -86,6 +102,21 @@ export default function StatusBar() {
         >
           {statusLabel(currentProject.status)}
         </span>
+      </div>
+
+      <span className="text-gray-700">|</span>
+
+      {/* AI Planner Model */}
+      <div className="flex items-center gap-1.5">
+        <span className="text-xs text-gray-500">AI Planner:</span>
+        <div className="flex items-center gap-1 font-mono text-xs text-blue-400">
+          {isGemini ? (
+            <Sparkles className="w-3 h-3 text-blue-400" />
+          ) : (
+            <Bot className="w-3 h-3 text-emerald-400" />
+          )}
+          <span>{modelName}</span>
+        </div>
       </div>
 
       {/* Project name on right */}

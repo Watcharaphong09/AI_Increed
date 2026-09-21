@@ -26,8 +26,9 @@ from backend.services.ai_provider import ProviderFactory
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
-# Path to the .env file (in backend/ directory)
+# Paths to the .env files (both backend and project root)
 _ENV_PATH = Path(__file__).parent.parent / ".env"
+_ROOT_ENV_PATH = Path(__file__).parent.parent.parent / ".env"
 
 
 # ── Pydantic schemas ──────────────────────────────────────────────────────────
@@ -117,14 +118,19 @@ def _read_env() -> dict[str, str]:
 
 
 def _write_env(env: dict[str, str]) -> None:
-    """Write key→value dict back to .env file."""
+    """Write key→value dict back to .env file in both backend/ and project root."""
     lines = []
     for key, value in env.items():
         # Quote values containing spaces
         if " " in value:
             value = f'"{value}"'
         lines.append(f"{key}={value}")
-    _ENV_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    content = "\n".join(lines) + "\n"
+    _ENV_PATH.write_text(content, encoding="utf-8")
+    try:
+        _ROOT_ENV_PATH.write_text(content, encoding="utf-8")
+    except Exception as e:
+        logger.warning("Could not write root .env: %s", e)
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -203,7 +209,8 @@ async def update_settings(payload: SettingsUpdate):
 
 
 @router.post("/test", response_model=TestConnectionResult)
-async def test_connection(payload: TestConnectionRequest):
+@router.post("/test-connection", response_model=TestConnectionResult)
+async def test_connection(payload: TestConnectionRequest = TestConnectionRequest()):
     """
     Test connectivity to the configured AI provider.
 

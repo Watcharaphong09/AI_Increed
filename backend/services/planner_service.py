@@ -474,20 +474,32 @@ class PlannerService:
     def _extract_json(text: str) -> dict[str, Any]:
         """
         Extract JSON object from raw text that may include prose or code fences.
-
-        Tries three strategies:
-        1. Strip markdown code fences and parse
-        2. Find first {...} block via regex
-        3. Raise ValueError
         """
-        # Strip ```json ... ``` fences
+        # Strategy 1: Look inside markdown ```json ... ``` code fence
+        fence_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+        if fence_match:
+            try:
+                return json.loads(fence_match.group(1))
+            except json.JSONDecodeError:
+                pass
+
+        # Strategy 2: Direct load stripped clean
         clean = re.sub(r"```(?:json)?\s*", "", text).strip().rstrip("`").strip()
         try:
             return json.loads(clean)
         except json.JSONDecodeError:
             pass
 
-        # Attempt to find a JSON object anywhere in the text
+        # Strategy 3: Find outermost { and }
+        start = text.find("{")
+        end = text.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            try:
+                return json.loads(text[start : end + 1])
+            except json.JSONDecodeError:
+                pass
+
+        # Strategy 4: regex greedy search
         match = re.search(r"\{.*\}", text, re.DOTALL)
         if match:
             try:

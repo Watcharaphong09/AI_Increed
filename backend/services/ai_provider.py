@@ -118,9 +118,10 @@ class OpenAICompatibleProvider(AIProvider):
                 stream=True,
             )
             async for chunk in stream:
-                delta = chunk.choices[0].delta.content
-                if delta:
-                    yield delta
+                if chunk.choices and len(chunk.choices) > 0:
+                    delta = chunk.choices[0].delta.content
+                    if delta:
+                        yield delta
         except Exception as exc:
             logger.error("OpenAI-compatible stream error: %s", exc)
             raise

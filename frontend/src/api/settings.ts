@@ -3,7 +3,11 @@ import type { Settings } from '../types'
 
 export interface TestConnectionResult {
   success: boolean
-  message: string
+  provider?: string
+  model?: string
+  latency_ms?: number
+  error?: string
+  message?: string
 }
 
 /**
@@ -25,7 +29,7 @@ export async function updateSettings(data: Partial<Settings>): Promise<Settings>
 /**
  * Test AI provider connection
  */
-export async function testConnection(): Promise<TestConnectionResult> {
-  const response = await apiClient.post<TestConnectionResult>('/settings/test-connection')
+export async function testConnection(role: string = 'planner'): Promise<TestConnectionResult> {
+  const response = await apiClient.post<TestConnectionResult>('/settings/test', { role })
   return response.data
 }

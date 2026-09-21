@@ -1,9 +1,10 @@
 import { useEffect } from 'react'
-import { Settings, Cpu, MessageSquare, CheckSquare, Sparkles } from 'lucide-react'
+import { Settings, Cpu, MessageSquare, CheckSquare, Sparkles, Bot } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import clsx from 'clsx'
 import { useAppStore } from '../store/appStore'
 import { getCapabilities } from '../api/handoff'
+import { getSettings } from '../api/settings'
 
 export default function Header() {
   const {
@@ -14,11 +15,18 @@ export default function Header() {
     setBuilderCapabilities,
   } = useAppStore()
 
-  // Fetch builder capabilities on mount
+  // Fetch builder capabilities
   const { data: capabilities } = useQuery({
     queryKey: ['builder-capabilities'],
     queryFn: getCapabilities,
     staleTime: 60000,
+  })
+
+  // Fetch current AI settings to display active planner
+  const { data: aiSettings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: getSettings,
+    staleTime: 30000,
   })
 
   useEffect(() => {
@@ -26,6 +34,11 @@ export default function Header() {
       setBuilderCapabilities(capabilities)
     }
   }, [capabilities, setBuilderCapabilities])
+
+  const isGemini =
+    !aiSettings ||
+    aiSettings.base_url?.includes('googleapis') ||
+    aiSettings.model?.toLowerCase().includes('gemini')
 
   return (
     <header className="h-12 bg-gray-900 border-b border-gray-800 flex items-center justify-between px-4 shrink-0 z-10">
@@ -72,12 +85,34 @@ export default function Header() {
         </nav>
       </div>
 
-      {/* Right: Antigravity status + LOCAL + Settings */}
-      <div className="flex items-center gap-4">
+      {/* Right: AI Planner badge + Antigravity status + LOCAL + Settings */}
+      <div className="flex items-center gap-3">
+        {/* Active AI Planner Badge (Gemini / GPT) */}
+        <div
+          onClick={() => setShowSettings(true)}
+          className={clsx(
+            'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs border font-medium cursor-pointer transition-all hover:border-gray-600',
+            isGemini
+              ? 'bg-blue-950/40 text-blue-300 border-blue-800/60'
+              : 'bg-emerald-950/40 text-emerald-300 border-emerald-800/60'
+          )}
+          title="คลิกเพื่อสลับหรือตั้งค่า AI Planner"
+        >
+          {isGemini ? (
+            <Sparkles className="w-3.5 h-3.5 text-blue-400" />
+          ) : (
+            <Bot className="w-3.5 h-3.5 text-emerald-400" />
+          )}
+          <span className="text-gray-400">Planner:</span>
+          <span className="font-semibold">
+            {isGemini ? 'Google Gemini' : 'OpenAI (GPT)'}
+          </span>
+        </div>
+
         {/* Antigravity Capability Badge (Section 8) */}
         <div
           className={clsx(
-            'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs border font-medium cursor-pointer',
+            'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs border font-medium cursor-pointer transition-all hover:border-gray-600',
             capabilities?.installed
               ? 'bg-emerald-950/40 text-emerald-400 border-emerald-800/60'
               : 'bg-gray-800/60 text-gray-400 border-gray-700'
@@ -89,8 +124,7 @@ export default function Header() {
               : 'Antigravity Not Detected (Manual Handoff Active)'
           }
         >
-          <Sparkles className="w-3.5 h-3.5 text-blue-400" />
-          <span>Antigravity:</span>
+          <span className="text-gray-400">Builder:</span>
           <span
             className={clsx(
               'w-2 h-2 rounded-full',
@@ -100,12 +134,12 @@ export default function Header() {
             )}
           />
           <span className="text-[11px] font-semibold">
-            {capabilities?.installed ? 'Ready' : 'Manual'}
+            {capabilities?.installed ? 'Antigravity' : 'Manual'}
           </span>
         </div>
 
         {/* LOCAL indicator */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 pl-1">
           <span className="text-xs text-gray-400 font-medium">LOCAL</span>
           <span className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_6px_#22c55e]" />
         </div>
