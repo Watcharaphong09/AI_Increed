@@ -257,6 +257,38 @@ export default function SettingsPanel() {
             )}
           </div>
 
+          {/* Antigravity Integration Section (Section 34) */}
+          <div className="pt-2 border-t border-gray-800 space-y-3">
+            <h3 className="text-xs font-semibold text-gray-300 uppercase tracking-wide flex items-center justify-between">
+              <span>Antigravity & Builder Integration</span>
+              <span className="text-[10px] text-blue-400 font-mono font-normal">v1.0 Local</span>
+            </h3>
+
+            <div className="bg-gray-950/60 border border-gray-800 rounded-lg p-3 space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-gray-400">Installation Status:</span>
+                <span className="flex items-center gap-1.5 font-medium text-emerald-400">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_6px_#34d399]" />
+                  Detected (Localhost)
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-gray-400">Integration Method:</span>
+                <span className="text-gray-200 font-mono text-[11px]">Application Launch & Workspace Open</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-gray-400">Default Handoff:</span>
+                <span className="px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800 text-[11px] font-semibold">
+                  Mode B — Assisted Handoff
+                </span>
+              </div>
+            </div>
+
+            <p className="text-[11px] text-gray-500 leading-relaxed">
+              เมื่อส่งงาน Task ไปยัง Antigravity ระบบจะสร้าง <code className="text-gray-400">.handoff/TASK-xxx/</code> พร้อม Context Manifest เฉพาะที่จำเป็น โดยไม่มี Conversation History ปนเปื้อน
+            </p>
+          </div>
+
           {/* Connection test result */}
           {connectionStatus?.tested && (
             <div

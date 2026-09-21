@@ -38,6 +38,21 @@ class CompressedContext:
     acceptance_criteria: list[str] = field(default_factory=list)
 
 
+@dataclass
+class ContextPreview:
+    """Context summary prior to handing off to builder (Section 44)."""
+    task_id: str
+    task_number: int
+    task_title: str
+    estimated_tokens: int
+    file_count: int
+    included_files: list[str] = field(default_factory=list)
+    excluded_files: list[str] = field(default_factory=list)
+    builder_instructions: str = ""
+    is_budget_exceeded: bool = False
+    budget_limit: int = 3500
+
+
 # ── Service ───────────────────────────────────────────────────────────────────
 
 class ContextService:
@@ -204,6 +219,71 @@ class ContextService:
 
         ctx = await self.compress_context(project_id, task.id, db)
         return self._render_markdown(ctx)
+
+    async def get_context_preview(
+        self,
+        project_id: str,
+        task_id: str,
+        db: AsyncSession,
+    ) -> ContextPreview:
+        """
+        Builds a preview of the context package that will be sent to the builder (Section 44).
+        Includes estimated token count, included files, and excluded items.
+        """
+        task = await db.get(Task, task_id)
+        if not task:
+            raise ValueError(f"Task {task_id} not found")
+
+        ctx = await self.compress_context(project_id, task_id, db)
+        rendered_md = self._render_markdown(ctx)
+        est_tokens = self.estimate_tokens(rendered_md)
+
+        # Standard included files
+        included = [
+            f"tasks/TASK-{task.task_number:03d}.md",
+            "STATE.md",
+            "REQUIREMENTS.md",
+            "PROJECT.md",
+        ]
+        if ctx.relevant_files:
+            for f in ctx.relevant_files:
+                if f not in included:
+                    included.append(f)
+
+        # Excluded items
+        excluded = [
+            "Old user-planner conversations (chat history)",
+            "Completed task full logs / history",
+            "Unrelated source files and architecture notes",
+            "Secrets and environment variables (.env)",
+        ]
+
+        instruction_text = (
+            f"Implement TASK-{task.task_number:03d}: {task.title}\n"
+            f"Read: tasks/TASK-{task.task_number:03d}.md and .handoff/TASK-{task.task_number:03d}/manifest.json\n"
+            f"Do not modify unrelated features."
+        )
+
+        budget_limit = 3500
+        return ContextPreview(
+            task_id=task.id,
+            task_number=task.task_number,
+            task_title=task.title,
+            estimated_tokens=est_tokens,
+            file_count=len(included),
+            included_files=included,
+            excluded_files=excluded,
+            builder_instructions=instruction_text,
+            is_budget_exceeded=est_tokens > budget_limit,
+            budget_limit=budget_limit,
+        )
+
+    @staticmethod
+    def estimate_tokens(text: str) -> int:
+        """Heuristic token estimation: ~3.5 chars per token for mixed Thai/English/Code."""
+        if not text:
+            return 0
+        return max(1, int(len(text) / 3.5))
 
     # ── Private ───────────────────────────────────────────────────────────────
 

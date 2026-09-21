@@ -19,7 +19,7 @@ from fastapi.responses import JSONResponse
 
 from backend.config import settings
 from backend.database import init_db
-from backend.routers import projects, planner, tasks, settings as settings_router
+from backend.routers import projects, planner, tasks, settings as settings_router, handoff
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -68,6 +68,7 @@ app.include_router(projects.router)
 app.include_router(planner.router)
 app.include_router(tasks.router)
 app.include_router(settings_router.router)
+app.include_router(handoff.router)
 
 
 # ── Root ──────────────────────────────────────────────────────────────────────

@@ -89,7 +89,11 @@ class TaskOut(BaseModel):
     title: str
     goal: str
     status: str
-    md_path: str
+    priority: str = "HIGH"
+    builder: str = "antigravity"
+    handoff_mode: str = "assisted"
+    md_path: str = ""
+    result_summary: str = ""
 
     model_config = {"from_attributes": True}
 
@@ -249,6 +253,15 @@ async def approve_project(
 
     project.status = ProjectStatus.BUILDING
     project.updated_at = datetime.now(timezone.utc)
+
+    # Set draft/pending tasks to READY for handoff
+    tasks_res = await db.execute(
+        select(Task).where(Task.project_id == project_id)
+    )
+    for t in tasks_res.scalars().all():
+        if t.status in (TaskStatus.DRAFT, TaskStatus.PENDING):
+            t.status = TaskStatus.READY
+
     await db.flush()
 
     try:

@@ -9,18 +9,23 @@ Generated files per project:
     DECISIONS.md      — all architectural decisions
     STATE.md          — current project state snapshot
     TASKS.md          — task index
+    CHANGELOG.md      — build changelog entries
     tasks/
-      TASK-001.md     — individual task brief
-      TASK-002.md     ...
+      TASK-001.md     — task spec with YAML Frontmatter
+      TASK-001.context.json — builder context manifest
+    tasks/results/
+      TASK-001.result.md — builder execution results
 
 ⚠️  API keys are NEVER written into any markdown file.
 """
 
 from __future__ import annotations
 
+import json
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -31,6 +36,7 @@ from backend.models.project import (
     Project,
     Requirement,
     Task,
+    TaskStatus,
 )
 
 logger = logging.getLogger(__name__)
@@ -49,11 +55,6 @@ class MarkdownService:
     ) -> dict[str, str]:
         """
         Generate all project-level markdown files.
-
-        Args:
-            project_id:         Project UUID.
-            db:                 Database session.
-            architecture_notes: Optional notes from the planner's plan.
 
         Returns:
             Dict mapping filename → content strings.
@@ -87,6 +88,7 @@ class MarkdownService:
             "DECISIONS.md": self._render_decisions(decisions),
             "STATE.md": self._render_state(project, tasks),
             "TASKS.md": self._render_tasks_index(tasks),
+            "CHANGELOG.md": self._render_changelog(project, tasks),
         }
 
     async def generate_task_file(
@@ -95,23 +97,18 @@ class MarkdownService:
         task_id: str,
         db: AsyncSession,
     ) -> str:
-        """
-        Generate markdown content for a single task.
-
-        Args:
-            project_id: Project UUID.
-            task_id:    Task UUID.
-            db:         Database session.
-
-        Returns:
-            Markdown string for TASK-NNN.md.
-        """
+        """Generate markdown content for a single task with YAML Frontmatter."""
         project = await db.get(Project, project_id)
         task = await db.get(Task, task_id)
-        if not task:
-            raise ValueError(f"Task {task_id} not found")
+        if not project or not task:
+            raise ValueError(f"Project {project_id} or task {task_id} not found")
 
-        return self._render_task(project, task)
+        # Load relevant context
+        from backend.services.context_service import ContextService
+        context_svc = ContextService()
+        compressed = await context_svc.compress_context(project_id, task_id, db)
+
+        return self._render_task(project, task, compressed)
 
     async def save_all_files(
         self,
@@ -121,8 +118,7 @@ class MarkdownService:
     ) -> None:
         """
         Generate and write all project files to workspace/{project_id}/.
-
-        Also generates individual TASK-NNN.md files.
+        Generates individual TASK-NNN.md and TASK-NNN.context.json files.
         """
         workspace = await self.get_workspace_path(project_id)
 
@@ -143,14 +139,35 @@ class MarkdownService:
             .order_by(Task.task_number)
         )
         tasks = tasks_result.scalars().all()
-
         project = await db.get(Project, project_id)
 
+        from backend.services.context_service import ContextService
+        context_svc = ContextService()
+
         for task in tasks:
-            content = self._render_task(project, task)
+            compressed = await context_svc.compress_context(project_id, task.id, db)
+            content = self._render_task(project, task, compressed)
             filename = f"TASK-{task.task_number:03d}.md"
             path = tasks_dir / filename
             path.write_text(content, encoding="utf-8")
+
+            # Write tasks/TASK-NNN.context.json (Section 14)
+            context_json_path = tasks_dir / f"TASK-{task.task_number:03d}.context.json"
+            context_manifest = {
+                "task": f"TASK-{task.task_number:03d}",
+                "required_context": [
+                    "PROJECT.md",
+                    "REQUIREMENTS.md",
+                    "STATE.md",
+                    f"tasks/{filename}",
+                ],
+                "relevant_files": compressed.relevant_files,
+                "acceptance_criteria": compressed.acceptance_criteria,
+            }
+            context_json_path.write_text(
+                json.dumps(context_manifest, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
 
             # Update task with md_path
             task.md_path = str(path)
@@ -158,13 +175,101 @@ class MarkdownService:
 
         await db.commit()
 
-    async def get_workspace_path(self, project_id: str) -> Path:
+    async def record_build_result(
+        self,
+        project_id: str,
+        task_id: str,
+        result_status: str,
+        changed_files: list[str],
+        tests_status: str,
+        notes: str,
+        raw_markdown: str,
+        db: AsyncSession,
+    ) -> Task:
         """
-        Return (and create) the workspace directory for a project.
+        Ingests the result reported back from Antigravity/Builder:
+          1. Saves tasks/results/TASK-NNN.result.md
+          2. Updates Task status in SQLite
+          3. Releases lock file
+          4. Updates STATE.md, CHANGELOG.md, and TASKS.md
+        """
+        project = await db.get(Project, project_id)
+        task = await db.get(Task, task_id)
+        if not project or not task:
+            raise ValueError(f"Project {project_id} or Task {task_id} not found")
 
-        Returns:
-            Absolute Path to workspace/{project_id}/
-        """
+        workspace = await self.get_workspace_path(project_id)
+
+        # 1. Write tasks/results/TASK-NNN.result.md
+        results_dir = workspace / "tasks" / "results"
+        results_dir.mkdir(parents=True, exist_ok=True)
+        result_file = results_dir / f"TASK-{task.task_number:03d}.result.md"
+
+        now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+        if not raw_markdown.strip():
+            changed_list = "\n".join(f"- {f}" for f in changed_files) if changed_files else "- None reported"
+            raw_markdown = f"""# Build Result
+
+Task: TASK-{task.task_number:03d}
+Status: {result_status.upper()}
+Timestamp: {now_str}
+
+## Changed Files
+
+{changed_list}
+
+## Tests
+
+{tests_status or "Not specified"}
+
+## Notes
+
+{notes or "Implementation completed."}
+"""
+
+        result_file.write_text(raw_markdown, encoding="utf-8")
+        logger.info("Wrote build result: %s", result_file)
+
+        # 2. Update Task model
+        status_map = {
+            "COMPLETED": TaskStatus.COMPLETED,
+            "DONE": TaskStatus.COMPLETED,
+            "FAILED": TaskStatus.FAILED,
+            "CHANGES_REQUIRED": TaskStatus.CHANGES_REQUIRED,
+            "NEEDS_ATTENTION": TaskStatus.NEEDS_ATTENTION,
+        }
+        task.status = status_map.get(result_status.upper(), TaskStatus.COMPLETED)
+        task.result_summary = notes or f"Result: {result_status}"
+
+        # 3. Release Lock file
+        from backend.services.builder_adapter import BuilderFactory
+        adapter = BuilderFactory.get_adapter()
+        adapter.release_lock(workspace, task.task_number)
+
+        # 4. Refresh project state & changelog
+        tasks_result = await db.execute(
+            select(Task).where(Task.project_id == project_id).order_by(Task.task_number)
+        )
+        all_tasks = tasks_result.scalars().all()
+
+        # Update STATE.md
+        state_content = self._render_state(project, all_tasks)
+        (workspace / "STATE.md").write_text(state_content, encoding="utf-8")
+
+        # Update CHANGELOG.md
+        changelog_content = self._render_changelog(project, all_tasks)
+        (workspace / "CHANGELOG.md").write_text(changelog_content, encoding="utf-8")
+
+        # Update TASKS.md
+        tasks_content = self._render_tasks_index(all_tasks)
+        (workspace / "TASKS.md").write_text(tasks_content, encoding="utf-8")
+
+        await db.commit()
+        return task
+
+    async def get_workspace_path(self, project_id: str) -> Path:
+        """Return (and create) the workspace directory for a project."""
         workspace = settings.get_workspace_path() / project_id
         workspace.mkdir(parents=True, exist_ok=True)
         return workspace
@@ -174,7 +279,11 @@ class MarkdownService:
     @staticmethod
     def _render_project(project: Project) -> str:
         created = project.created_at.strftime("%Y-%m-%d %H:%M UTC")
-        updated = project.updated_at.strftime("%Y-%m-%d %H:%M UTC") if project.updated_at else created
+        updated = (
+            project.updated_at.strftime("%Y-%m-%d %H:%M UTC")
+            if project.updated_at
+            else created
+        )
         return f"""\
 # {project.name}
 
@@ -198,7 +307,6 @@ class MarkdownService:
         if not requirements:
             return "# Requirements\n\n_No requirements yet._\n"
 
-        # Group by category
         grouped: dict[str, list[Requirement]] = {}
         for req in requirements:
             grouped.setdefault(req.category, []).append(req)
@@ -209,9 +317,7 @@ class MarkdownService:
             for req in reqs:
                 status_badge = f"`{req.status.value}`"
                 priority_badge = f"`{req.priority.value}`"
-                lines.append(
-                    f"- {status_badge} {priority_badge} {req.content}"
-                )
+                lines.append(f"- {status_badge} {priority_badge} {req.content}")
                 if req.notes:
                     lines.append(f"  > {req.notes}")
             lines.append("")
@@ -253,28 +359,61 @@ class MarkdownService:
 
     @staticmethod
     def _render_state(project: Project, tasks: list[Task]) -> str:
-        done = sum(1 for t in tasks if t.status.value == "DONE")
-        total = len(tasks)
-        progress = f"{done}/{total}" if total else "0/0"
+        """Renders STATE.md matching Section 23 & 25 of specification."""
+        completed_tasks = [t for t in tasks if t.status in (TaskStatus.COMPLETED, TaskStatus.DONE)]
+        building_tasks = [
+            t for t in tasks
+            if t.status in (TaskStatus.BUILDING, TaskStatus.HANDED_OFF, TaskStatus.HANDOFF_PENDING, TaskStatus.IN_PROGRESS)
+        ]
+        pending_tasks = [
+            t for t in tasks
+            if t.status in (TaskStatus.READY, TaskStatus.APPROVED, TaskStatus.DRAFT, TaskStatus.PENDING)
+        ]
+
+        current_task_str = f"TASK-{building_tasks[0].task_number:03d} ({building_tasks[0].title})" if building_tasks else "None"
+        last_completed_str = f"TASK-{completed_tasks[-1].task_number:03d} ({completed_tasks[-1].title})" if completed_tasks else "None"
 
         lines = [
             f"# State — {project.name}",
             "",
-            f"**Status:** `{project.status.value}`",
-            f"**Task Progress:** {progress}",
+            f"**Project Status:** `{project.status.value}`",
+            f"**Current Task:** {current_task_str}",
+            f"**Last Completed:** {last_completed_str}",
+            f"**Progress:** {len(completed_tasks)}/{len(tasks)} tasks completed",
             "",
-            "## Task Status",
+            "## Completed",
             "",
         ]
 
-        for task in tasks:
-            icon = {
-                "DONE": "✅",
-                "IN_PROGRESS": "🔄",
-                "FAILED": "❌",
-                "PENDING": "⬜",
-            }.get(task.status.value, "⬜")
-            lines.append(f"- {icon} TASK-{task.task_number:03d}: {task.title}")
+        if completed_tasks:
+            for t in completed_tasks:
+                lines.append(f"- [x] TASK-{t.task_number:03d}: {t.title}")
+        else:
+            lines.append("_No tasks completed yet._")
+
+        lines += [
+            "",
+            "## In Progress",
+            "",
+        ]
+
+        if building_tasks:
+            for t in building_tasks:
+                lines.append(f"- [ ] 🔄 TASK-{t.task_number:03d}: {t.title} (`{t.status.value}`)")
+        else:
+            lines.append("_No tasks currently in progress._")
+
+        lines += [
+            "",
+            "## Pending",
+            "",
+        ]
+
+        if pending_tasks:
+            for t in pending_tasks:
+                lines.append(f"- [ ] TASK-{t.task_number:03d}: {t.title} (`{t.status.value}`)")
+        else:
+            lines.append("_No pending tasks._")
 
         return "\n".join(lines) + "\n"
 
@@ -283,36 +422,139 @@ class MarkdownService:
         if not tasks:
             return "# Tasks\n\n_No tasks generated yet._\n"
 
-        lines = ["# Tasks\n", "| # | Title | Status |", "|---|-------|--------|"]
+        lines = ["# Tasks\n", "| # | Title | Priority | Status |", "|---|-------|----------|--------|"]
         for task in tasks:
             lines.append(
-                f"| TASK-{task.task_number:03d} | {task.title} | `{task.status.value}` |"
+                f"| TASK-{task.task_number:03d} | {task.title} | `{task.priority}` | `{task.status.value}` |"
             )
 
         return "\n".join(lines) + "\n"
 
     @staticmethod
-    def _render_task(project: Optional[Project], task: Task) -> str:
+    def _render_changelog(project: Project, tasks: list[Task]) -> str:
+        """Renders CHANGELOG.md matching Section 25."""
+        completed = [t for t in tasks if t.status in (TaskStatus.COMPLETED, TaskStatus.DONE)]
+        lines = [
+            f"# Changelog — {project.name}",
+            "",
+            f"> Automatically updated when Builder completes tasks.",
+            "",
+        ]
+        if not completed:
+            lines.append("_No changelog entries yet._\n")
+            return "\n".join(lines)
+
+        for t in reversed(completed):
+            summary = t.result_summary or t.goal or t.title
+            lines += [
+                f"## TASK-{t.task_number:03d}: {t.title}",
+                "",
+                f"{summary}",
+                "",
+                f"- **Status:** Completed",
+                f"- **Builder:** {t.builder}",
+                "",
+                "---",
+                "",
+            ]
+        return "\n".join(lines)
+
+    @staticmethod
+    def _render_task(
+        project: Optional[Project],
+        task: Task,
+        compressed: Any = None,
+    ) -> str:
+        """
+        Renders TASK-NNN.md with YAML Frontmatter and structured sections
+        matching Sections 12 & 13 of the specification.
+        """
         project_name = project.name if project else "Unknown Project"
-        return f"""\
+        project_id = project.id if project else ""
+        planning_mode = project.planning_mode.value if project else "DETAILED"
+        created_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+        # YAML Frontmatter (Section 12)
+        frontmatter = f"""---
+task_id: TASK-{task.task_number:03d}
+project_id: {project_id}
+status: {task.status.value}
+priority: {task.priority}
+planning_mode: {planning_mode}
+created_at: {created_date}
+approved: true
+builder: {task.builder}
+---"""
+
+        req_lines = []
+        if compressed and compressed.requirements:
+            for r in compressed.requirements:
+                req_lines.append(f"- {r}")
+        else:
+            req_lines.append(f"- {task.goal or task.title}")
+
+        files_lines = []
+        if compressed and compressed.relevant_files:
+            for f in compressed.relevant_files:
+                files_lines.append(f"- `{f}`")
+        else:
+            files_lines.append("- _Relevant files determined during implementation._")
+
+        ac_lines = []
+        if compressed and compressed.acceptance_criteria:
+            for ac in compressed.acceptance_criteria:
+                ac_lines.append(f"- [ ] {ac}")
+        else:
+            ac_lines.append(f"- [ ] Functionality operates as specified in goal.")
+            ac_lines.append(f"- [ ] No unrelated features are broken.")
+
+        constraints_lines = []
+        if compressed and compressed.constraints:
+            for c in compressed.constraints:
+                constraints_lines.append(f"- {c}")
+        else:
+            constraints_lines.append("- Preserve existing architecture and conventions.")
+            constraints_lines.append("- Do not modify unrelated components.")
+
+        body = f"""
 # TASK-{task.task_number:03d}: {task.title}
 
-**Project:** {project_name}
-**Status:** `{task.status.value}`
+## Status
+
+`{task.status.value}`
 
 ## Goal
 
-{task.goal or "_No goal specified._"}
+{task.goal or task.title}
 
-## Implementation Notes
+## Context
 
-_To be filled by AI Builder (Antigravity)._
+- **Project:** {project_name}
+- **Planning Mode:** {planning_mode}
+- **Priority:** {task.priority}
+
+## Requirements
+
+{chr(10).join(req_lines)}
+
+## Relevant Files
+
+{chr(10).join(files_lines)}
 
 ## Acceptance Criteria
 
-_To be defined during planning._
+{chr(10).join(ac_lines)}
 
-## Files Changed
+## Constraints
 
-_Updated by AI Builder upon completion._
+{chr(10).join(constraints_lines)}
+
+## Builder Instructions
+
+1. Implement only this task according to the acceptance criteria.
+2. Read the relevant project files and `.handoff/TASK-{task.task_number:03d}/manifest.json` before modifying code.
+3. Work inside the assigned project workspace boundary.
+4. Run appropriate tests after implementation.
+5. Report changed files, test results, and final status when done.
 """
+        return frontmatter + "\n" + body

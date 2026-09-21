@@ -41,6 +41,16 @@ interface AppStore {
   // Ready to build state
   isReadyToBuild: boolean
   setIsReadyToBuild: (v: boolean) => void
+
+  // Builder & Handoff
+  builderCapabilities: import('../types').BuilderCapability | null
+  setBuilderCapabilities: (cap: import('../types').BuilderCapability | null) => void
+  selectedTaskForHandoff: Task | null
+  setSelectedTaskForHandoff: (task: Task | null) => void
+  selectedTaskForResult: Task | null
+  setSelectedTaskForResult: (task: Task | null) => void
+  activeMainTab: 'chat' | 'tasks'
+  setActiveMainTab: (tab: 'chat' | 'tasks') => void
 }
 
 export const useAppStore = create<AppStore>((set) => ({
@@ -95,4 +105,14 @@ export const useAppStore = create<AppStore>((set) => ({
   // Ready to build
   isReadyToBuild: false,
   setIsReadyToBuild: (v) => set({ isReadyToBuild: v }),
+
+  // Builder & Handoff
+  builderCapabilities: null,
+  setBuilderCapabilities: (cap) => set({ builderCapabilities: cap }),
+  selectedTaskForHandoff: null,
+  setSelectedTaskForHandoff: (task) => set({ selectedTaskForHandoff: task }),
+  selectedTaskForResult: null,
+  setSelectedTaskForResult: (task) => set({ selectedTaskForResult: task }),
+  activeMainTab: 'chat',
+  setActiveMainTab: (tab) => set({ activeMainTab: tab }),
 }))

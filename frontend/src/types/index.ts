@@ -16,8 +16,24 @@ export type RequirementStatus =
 // Question priority
 export type QuestionPriority = 'BLOCKING' | 'IMPORTANT' | 'OPTIONAL'
 
-// Task status
-export type TaskStatus = 'PENDING' | 'IN_PROGRESS' | 'DONE' | 'FAILED'
+// Task lifecycle status (Section 11)
+export type TaskStatus =
+  | 'DRAFT'
+  | 'READY'
+  | 'APPROVED'
+  | 'HANDOFF_PENDING'
+  | 'HANDED_OFF'
+  | 'BUILDING'
+  | 'TESTING'
+  | 'REVIEW'
+  | 'COMPLETED'
+  | 'FAILED'
+  | 'NEEDS_ATTENTION'
+  | 'CHANGES_REQUIRED'
+  // Legacy / alias states
+  | 'PENDING'
+  | 'IN_PROGRESS'
+  | 'DONE'
 
 // AI Provider
 export type AIProvider = 'openai' | 'groq' | 'azure' | 'ollama'
@@ -64,11 +80,16 @@ export interface Requirement {
 
 export interface Task {
   id: string
+  project_id: string
   task_number: number
   title: string
   goal: string
   status: TaskStatus
+  priority: string
+  builder: string
+  handoff_mode: string
   md_path: string | null
+  result_summary?: string
 }
 
 export interface RoleOverride {
@@ -96,4 +117,52 @@ export interface CreateProjectData {
 export interface ComplexityEstimate {
   score: number
   recommended_mode: PlanningMode
+}
+
+// ── Builder & Handoff Interfaces ─────────────────────────────────────────────
+
+export interface BuilderCapability {
+  installed: boolean
+  cli: boolean
+  workspace_open: boolean
+  deep_link: boolean
+  automation: boolean
+  executable_path: string | null
+  method: string
+  default_mode: string
+  details: Record<string, any>
+}
+
+export interface ContextPreview {
+  task_id: string
+  task_number: number
+  task_title: string
+  estimated_tokens: number
+  file_count: number
+  included_files: string[]
+  excluded_files: string[]
+  builder_instructions: string
+  is_budget_exceeded: boolean
+  budget_limit: number
+}
+
+export interface SendHandoffResponse {
+  task_id: string
+  task_number: number
+  status: string
+  workspace_path: string
+  manifest_path: string
+  instruction_path: string
+  instruction_text: string
+  workspace_opened: boolean
+  mode_used: string
+  message: string
+}
+
+export interface BuildResultSubmission {
+  status: string
+  changed_files: string[]
+  tests_status: string
+  notes: string
+  raw_markdown: string
 }

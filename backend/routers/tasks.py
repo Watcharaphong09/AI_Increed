@@ -41,7 +41,11 @@ class TaskOut(BaseModel):
     title: str
     goal: str
     status: str
-    md_path: str
+    priority: str = "HIGH"
+    builder: str = "antigravity"
+    handoff_mode: str = "assisted"
+    md_path: str = ""
+    result_summary: str = ""
 
     model_config = {"from_attributes": True}
 

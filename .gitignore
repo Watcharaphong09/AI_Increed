@@ -45,6 +45,9 @@ node_modules/
 frontend/dist/
 frontend/.vite/
 frontend/coverage/
+*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
 
 # IDE
 .vscode/

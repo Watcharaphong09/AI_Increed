@@ -60,10 +60,22 @@ class RequirementPriority(str, enum.Enum):
 
 
 class TaskStatus(str, enum.Enum):
+    DRAFT = "DRAFT"
+    READY = "READY"
+    APPROVED = "APPROVED"
+    HANDOFF_PENDING = "HANDOFF_PENDING"
+    HANDED_OFF = "HANDED_OFF"
+    BUILDING = "BUILDING"
+    TESTING = "TESTING"
+    REVIEW = "REVIEW"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    NEEDS_ATTENTION = "NEEDS_ATTENTION"
+    CHANGES_REQUIRED = "CHANGES_REQUIRED"
+    # Legacy / alias states
     PENDING = "PENDING"
     IN_PROGRESS = "IN_PROGRESS"
     DONE = "DONE"
-    FAILED = "FAILED"
 
 
 class MessageRole(str, enum.Enum):
@@ -221,9 +233,13 @@ class Task(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     goal: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[TaskStatus] = mapped_column(
-        Enum(TaskStatus), default=TaskStatus.PENDING
+        Enum(TaskStatus), default=TaskStatus.READY
     )
+    priority: Mapped[str] = mapped_column(String(50), default="HIGH")
+    builder: Mapped[str] = mapped_column(String(50), default="antigravity")
+    handoff_mode: Mapped[str] = mapped_column(String(50), default="assisted")
     md_path: Mapped[str] = mapped_column(String(512), default="")
+    result_summary: Mapped[str] = mapped_column(Text, default="")
 
     project: Mapped["Project"] = relationship("Project", back_populates="tasks")
 

@@ -5,10 +5,13 @@ import { useAppStore } from '../store/appStore'
 import Header from '../components/Header'
 import Sidebar from '../components/Sidebar'
 import ChatPanel from '../components/ChatPanel'
+import TasksPanel from '../components/TasksPanel'
 import StatusBar from '../components/StatusBar'
 import RequirementPanel from '../components/RequirementPanel'
 import ApprovalPanel from '../components/ApprovalPanel'
 import SettingsPanel from '../components/SettingsPanel'
+import HandoffModal from '../components/HandoffModal'
+import BuildResultModal from '../components/BuildResultModal'
 
 function ToastNotification() {
   const { toast, clearToast } = useAppStore()
@@ -48,7 +51,15 @@ function ToastNotification() {
 }
 
 export default function ProjectPage() {
-  const { setShowSettings } = useAppStore()
+  const {
+    currentProject,
+    setShowSettings,
+    activeMainTab,
+    selectedTaskForHandoff,
+    setSelectedTaskForHandoff,
+    selectedTaskForResult,
+    setSelectedTaskForResult,
+  } = useAppStore()
 
   // Keyboard shortcut: Cmd/Ctrl + , to open settings
   useEffect(() => {
@@ -71,12 +82,46 @@ export default function ProjectPage() {
 
         {/* Main content */}
         <main className="flex-1 flex flex-col min-h-0 min-w-0">
-          <ChatPanel />
-          <StatusBar />
-          <RequirementPanel />
-          <ApprovalPanel />
+          {activeMainTab === 'chat' ? (
+            <>
+              <ChatPanel />
+              <StatusBar />
+              <RequirementPanel />
+              <ApprovalPanel />
+            </>
+          ) : (
+            <>
+              <TasksPanel
+                onSelectTask={setSelectedTaskForHandoff}
+                onOpenResultModal={setSelectedTaskForResult}
+              />
+              <StatusBar />
+              <ApprovalPanel />
+            </>
+          )}
         </main>
       </div>
+
+      {/* Modals */}
+      {selectedTaskForHandoff && currentProject && (
+        <HandoffModal
+          task={selectedTaskForHandoff}
+          projectId={currentProject.id}
+          onClose={() => setSelectedTaskForHandoff(null)}
+          onOpenResultModal={(t) => {
+            setSelectedTaskForHandoff(null)
+            setSelectedTaskForResult(t)
+          }}
+        />
+      )}
+
+      {selectedTaskForResult && currentProject && (
+        <BuildResultModal
+          task={selectedTaskForResult}
+          projectId={currentProject.id}
+          onClose={() => setSelectedTaskForResult(null)}
+        />
+      )}
 
       <SettingsPanel />
       <ToastNotification />
