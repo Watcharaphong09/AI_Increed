@@ -31,22 +31,21 @@ if not exist .env (
     pause
 )
 
-REM Install backend dependencies if needed
-if not exist backend\venv (
-    echo [INFO] Creating Python virtual environment...
-    python -m venv backend\venv
+REM Check if Python already has required backend packages
+python -c "import fastapi, uvicorn, pydantic, sqlalchemy, aiosqlite, openai" >nul 2>&1
+if errorlevel 1 (
+    echo [INFO] Installing backend dependencies...
+    pip install -r backend\requirements.txt
+) else (
+    echo [INFO] Backend dependencies are verified and ready.
 )
-
-echo [INFO] Installing backend dependencies...
-call backend\venv\Scripts\activate.bat
-pip install -r backend\requirements.txt -q
 
 REM Install frontend dependencies if needed
 if not exist frontend\node_modules (
     echo [INFO] Installing frontend dependencies...
-    cd frontend
-    npm install
-    cd ..
+    cd /d "%~dp0frontend"
+    call npm install
+    cd /d "%~dp0"
 )
 
 echo.
@@ -63,10 +62,10 @@ REM Wait a moment for backend to start
 timeout /t 3 /nobreak >nul
 
 REM Start frontend in new window
-start "AI Workspace - Frontend" cmd /k "cd frontend && npm run dev"
+start "AI Workspace - Frontend" cmd /k "cd /d "%~dp0frontend" && npm run dev"
 
 REM Open browser
-timeout /t 5 /nobreak >nul
+timeout /t 4 /nobreak >nul
 start http://localhost:3000
 
 echo.
