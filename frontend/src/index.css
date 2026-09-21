@@ -1,0 +1,168 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background-color: #0a0a0f;
+    color: #f3f4f6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: #111827;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #374151;
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #4b5563;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-blue-600 hover:bg-blue-500 text-white font-medium px-4 py-2 rounded-lg transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+
+  .btn-secondary {
+    @apply bg-gray-800 hover:bg-gray-700 text-gray-200 font-medium px-4 py-2 rounded-lg border border-gray-700 transition-colors duration-150;
+  }
+
+  .btn-danger {
+    @apply bg-red-900/40 hover:bg-red-800/60 text-red-400 font-medium px-4 py-2 rounded-lg border border-red-800/50 transition-colors duration-150;
+  }
+
+  .input-field {
+    @apply bg-gray-800 border border-gray-700 text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-colors placeholder-gray-500;
+  }
+
+  .card {
+    @apply bg-gray-900 border border-gray-800 rounded-lg;
+  }
+}
+
+/* Typing animation */
+@keyframes typing-dot {
+  0%,
+  80%,
+  100% {
+    transform: scale(0.6);
+    opacity: 0.4;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.typing-dot {
+  animation: typing-dot 1.4s infinite ease-in-out;
+}
+
+.typing-dot:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.typing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+/* Markdown prose overrides for dark theme */
+.prose-dark {
+  color: #d1d5db;
+}
+
+.prose-dark h1,
+.prose-dark h2,
+.prose-dark h3,
+.prose-dark h4 {
+  color: #f9fafb;
+}
+
+.prose-dark code {
+  background-color: #1f2937;
+  padding: 0.1em 0.3em;
+  border-radius: 4px;
+  font-size: 0.85em;
+  color: #93c5fd;
+}
+
+.prose-dark pre {
+  background-color: #111827;
+  border: 1px solid #374151;
+  border-radius: 6px;
+  padding: 1em;
+  overflow-x: auto;
+}
+
+.prose-dark pre code {
+  background: none;
+  padding: 0;
+}
+
+.prose-dark blockquote {
+  border-left: 3px solid #374151;
+  padding-left: 1em;
+  color: #9ca3af;
+}
+
+.prose-dark ul,
+.prose-dark ol {
+  padding-left: 1.5em;
+}
+
+.prose-dark li {
+  margin-bottom: 0.25em;
+}
+
+.prose-dark a {
+  color: #60a5fa;
+  text-decoration: underline;
+}
+
+.prose-dark hr {
+  border-color: #374151;
+}
+
+.prose-dark table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.prose-dark th,
+.prose-dark td {
+  border: 1px solid #374151;
+  padding: 0.5em 0.75em;
+}
+
+.prose-dark th {
+  background-color: #1f2937;
+}

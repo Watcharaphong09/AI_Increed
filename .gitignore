@@ -1,0 +1,67 @@
+# ============================================
+# AI_Increed — .gitignore
+# ============================================
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+lib/
+lib64/
+
+# Environment variables — NEVER commit API keys
+.env
+*.env.local
+
+# SQLite database — local data, not for repo
+*.db
+*.sqlite
+*.sqlite3
+backend/ai_increed.db
+
+# Node / Frontend
+node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/coverage/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Workspace (generated project files with potentially sensitive context)
+workspace/
+
+# Logs
+*.log
+logs/
+
+# Secrets
+*.pem
+*.key
+*.cert
