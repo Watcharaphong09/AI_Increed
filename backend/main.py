@@ -66,6 +66,7 @@ app.add_middleware(
 # ── Routers ───────────────────────────────────────────────────────────────────
 app.include_router(projects.router)
 app.include_router(planner.router)
+app.include_router(planner.projects_alias_router)
 app.include_router(tasks.router)
 app.include_router(settings_router.router)
 app.include_router(handoff.router)

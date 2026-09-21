@@ -41,6 +41,7 @@ from backend.services.planner_service import PlannerService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/planner", tags=["planner"])
+projects_alias_router = APIRouter(prefix="/api/projects", tags=["projects-planner"])
 
 planner_service = PlannerService()
 
@@ -50,11 +51,11 @@ planner_service = PlannerService()
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1)
     planning_mode: PlanningMode = PlanningMode.AUTO
-    stream: bool = True
+    stream: bool = False
 
 
 class EstimateRequest(BaseModel):
-    text: str = Field(..., min_length=1)
+    text: Optional[str] = None
 
 
 class RequirementUpdate(BaseModel):
@@ -121,19 +122,18 @@ def _messages_to_history(messages: list[Message]) -> list[dict]:
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/{project_id}/chat")
+@projects_alias_router.post("/{project_id}/chat")
 async def chat(
     project_id: str,
     payload: ChatRequest,
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Send a message to the planner and receive a streaming SSE response.
+    Send a message to the planner.
 
-    The response is an SSE stream. Each event has:
-      - event: chunk|done|error
-      - data: JSON payload
-
-    On completion, the full response is saved to DB and requirements are updated.
+    If payload.stream is True: returns SSE stream.
+    If payload.stream is False (default): returns JSON PlannerResponse object.
+    On completion, messages and requirements are saved to DB.
     """
     project = await _require_project(project_id, db)
 
@@ -155,6 +155,80 @@ async def chat(
     db.add(user_msg)
     await db.flush()
 
+    if not payload.stream:
+        # Non-streaming JSON response for standard REST / frontend client
+        try:
+            parsed = await planner_service.analyze_requirement(
+                project_id=project_id,
+                user_message=payload.message,
+                conversation_history=history,
+                planning_mode=payload.planning_mode.value,
+                db=db,
+            )
+
+            async with db.begin_nested():
+                planner_msg = Message(
+                    project_id=project_id,
+                    role=MessageRole.PLANNER,
+                    content=parsed.message,
+                )
+                db.add(planner_msg)
+
+                for req_update in parsed.requirements_update:
+                    new_req = Requirement(
+                        project_id=project_id,
+                        category=req_update.category,
+                        content=req_update.content,
+                        status=RequirementStatus(req_update.status)
+                        if req_update.status in [e.value for e in RequirementStatus]
+                        else RequirementStatus.PROPOSED,
+                        priority=RequirementPriority(req_update.priority)
+                        if req_update.priority in [e.value for e in RequirementPriority]
+                        else RequirementPriority.IMPORTANT,
+                        notes=req_update.notes,
+                    )
+                    db.add(new_req)
+
+            await db.commit()
+
+            return {
+                "message": parsed.message,
+                "questions": [
+                    {
+                        "text": q.text,
+                        "priority": q.priority,
+                        "category": q.category,
+                    }
+                    for q in parsed.questions
+                ],
+                "suggestions": [
+                    {
+                        "content": s.content,
+                        "category": s.category,
+                        "reason": s.reason,
+                    }
+                    for s in parsed.suggestions
+                ],
+                "conflicts": [
+                    {
+                        "requirement_a": c.requirement_a,
+                        "requirement_b": c.requirement_b,
+                        "description": c.description,
+                        "suggestion": c.suggestion,
+                    }
+                    for c in parsed.conflicts
+                ],
+                "is_ready_to_build": parsed.is_ready_to_build,
+                "requirements_count": len(parsed.requirements_update),
+            }
+        except Exception as exc:
+            logger.error("Planner error for project %s: %s", project_id, exc)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"AI Provider error: {exc}",
+            )
+
+    # Streaming SSE response
     async def event_stream() -> AsyncGenerator[str, None]:
         full_response = ""
         try:
@@ -175,7 +249,7 @@ async def chat(
                 planner_msg = Message(
                     project_id=project_id,
                     role=MessageRole.PLANNER,
-                    content=full_response,
+                    content=parsed.message or full_response,
                 )
                 db.add(planner_msg)
 
@@ -249,6 +323,7 @@ async def chat(
 
 
 @router.get("/{project_id}/messages", response_model=list[MessageOut])
+@projects_alias_router.get("/{project_id}/messages", response_model=list[MessageOut])
 async def get_messages(
     project_id: str,
     db: AsyncSession = Depends(get_db),
@@ -265,9 +340,10 @@ async def get_messages(
 
 
 @router.post("/{project_id}/estimate-complexity", response_model=ComplexityOut)
+@projects_alias_router.post("/{project_id}/estimate-complexity", response_model=ComplexityOut)
 async def estimate_complexity(
     project_id: str,
-    payload: EstimateRequest,
+    payload: Optional[EstimateRequest] = None,
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -277,7 +353,14 @@ async def estimate_complexity(
     """
     project = await _require_project(project_id, db)
 
-    result = await planner_service.estimate_complexity(payload.text)
+    eval_text = (
+        (payload.text if payload and payload.text else None)
+        or project.description
+        or project.name
+        or "General software project"
+    )
+
+    result = await planner_service.estimate_complexity(eval_text)
 
     # Auto-update project if still in AUTO mode
     if project.planning_mode == PlanningMode.AUTO:
@@ -294,6 +377,7 @@ async def estimate_complexity(
 
 
 @router.get("/{project_id}/requirements", response_model=list[RequirementOut])
+@projects_alias_router.get("/{project_id}/requirements", response_model=list[RequirementOut])
 async def list_requirements(
     project_id: str,
     db: AsyncSession = Depends(get_db),
@@ -308,6 +392,18 @@ async def list_requirements(
 
 
 @router.put(
+    "/{project_id}/requirements/{req_id}",
+    response_model=RequirementOut,
+)
+@router.patch(
+    "/{project_id}/requirements/{req_id}",
+    response_model=RequirementOut,
+)
+@projects_alias_router.put(
+    "/{project_id}/requirements/{req_id}",
+    response_model=RequirementOut,
+)
+@projects_alias_router.patch(
     "/{project_id}/requirements/{req_id}",
     response_model=RequirementOut,
 )
@@ -336,6 +432,7 @@ async def update_requirement(
 
 
 @router.post("/{project_id}/generate-plan", response_model=dict)
+@projects_alias_router.post("/{project_id}/generate-plan", response_model=dict)
 async def generate_plan(
     project_id: str,
     payload: GeneratePlanRequest = GeneratePlanRequest(),
@@ -406,6 +503,7 @@ async def generate_plan(
 
 
 @router.get("/{project_id}/plan", response_model=dict)
+@projects_alias_router.get("/{project_id}/plan", response_model=dict)
 async def get_plan(
     project_id: str,
     db: AsyncSession = Depends(get_db),
