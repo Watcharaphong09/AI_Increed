@@ -57,7 +57,7 @@ echo Press Ctrl+C to stop all services.
 echo.
 
 REM Start backend in new window
-start "AI Workspace - Backend" cmd /k "backend\venv\Scripts\activate.bat && cd backend && uvicorn main:app --host 127.0.0.1 --port 8000 --reload"
+start "AI Workspace - Backend" cmd /k "cd /d "%~dp0" && python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload"
 
 REM Wait a moment for backend to start
 timeout /t 3 /nobreak >nul
