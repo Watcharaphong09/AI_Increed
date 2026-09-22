@@ -5,7 +5,7 @@ import { useAppStore } from '../store/appStore'
 import { approveProject } from '../api/projects'
 
 export default function ApprovalPanel() {
-  const { currentProject, isReadyToBuild, showToast, updateProject, setShowPlanEdit } = useAppStore()
+  const { currentProject, isReadyToBuild, showToast, updateProject, setShowPlanEdit, setActiveMainTab } = useAppStore()
   const [showConfirm, setShowConfirm] = useState(false)
   const queryClient = useQueryClient()
 
@@ -13,10 +13,12 @@ export default function ApprovalPanel() {
     mutationFn: () => approveProject(currentProject!.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] })
+      queryClient.invalidateQueries({ queryKey: ['tasks', currentProject!.id] })
       const updated = { ...currentProject!, status: 'BUILDING' as const }
       updateProject(updated)
-      showToast('อนุมัติโปรเจกต์แล้ว — เริ่ม Build!', 'success')
+      showToast('อนุมัติโปรเจกต์แล้ว — สร้าง Tasks และเข้าสู่สถานะ Building!', 'success')
       setShowConfirm(false)
+      setActiveMainTab('tasks')
     },
     onError: (err: Error) => {
       showToast(err.message, 'error')

@@ -1,9 +1,53 @@
 import { useState } from 'react'
-import { CheckCircle, X, FileText, Check } from 'lucide-react'
+import { CheckCircle, X, FileText, Check, Zap } from 'lucide-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { submitBuildResult } from '../api/handoff'
 import { useAppStore } from '../store/appStore'
 import type { Task, BuildResultSubmission } from '../types'
+
+/**
+ * Terminal Output Pruner (GODKILLER-ZERO §2.3)
+ * Strips ANSI escape codes, collapses framework stack traces, and removes repetitive noise.
+ */
+function pruneTerminalLog(raw: string): string {
+  if (!raw.trim()) return ''
+  // 1. Remove ANSI escape codes
+  let text = raw.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '')
+
+  const lines = text.split('\n')
+  const pruned: string[] = []
+  let frameworkCount = 0
+
+  const isFrameworkLine = (line: string) => {
+    const l = line.toLowerCase().trim()
+    return (
+      l.includes('node_modules') ||
+      l.includes('node:internal') ||
+      l.includes('site-packages') ||
+      l.includes('dist-packages') ||
+      l.includes('<frozen ') ||
+      l.startsWith('at microsoft.') ||
+      l.startsWith('at system.')
+    )
+  }
+
+  for (const line of lines) {
+    if (isFrameworkLine(line)) {
+      frameworkCount++
+    } else {
+      if (frameworkCount > 0) {
+        pruned.push(`... [${frameworkCount} framework stack frames collapsed] ...`)
+        frameworkCount = 0
+      }
+      pruned.push(line)
+    }
+  }
+  if (frameworkCount > 0) {
+    pruned.push(`... [${frameworkCount} framework stack frames collapsed] ...`)
+  }
+
+  return pruned.join('\n')
+}
 
 interface BuildResultModalProps {
   task: Task
@@ -50,6 +94,18 @@ export default function BuildResultModal({
       .split('\n')
       .map((line) => line.trim().replace(/^-\s*/, ''))
       .filter(Boolean)
+
+    // GODKILLER-ZERO §3.6: Done != Evidence Guard
+    if (status === 'COMPLETED') {
+      if (!useRawMarkdown && changed_files.length === 0) {
+        showToast('Done ≠ Evidence: กรุณาระบุไฟล์ที่มีการแก้ไข (Changed Files) อย่างน้อย 1 ไฟล์', 'error')
+        return
+      }
+      if (useRawMarkdown && !rawMarkdown.trim()) {
+        showToast('Done ≠ Evidence: กรุณากรอกรายละเอียดผลการรัน/ทดสอบใน Raw Markdown', 'error')
+        return
+      }
+    }
 
     resultMutation.mutate({
       status,
@@ -145,9 +201,24 @@ export default function BuildResultModal({
 
               {/* Tests */}
               <div>
-                <label className="block text-xs font-semibold text-gray-300 mb-1">
-                  ผลการทดสอบ (Tests Result)
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-semibold text-gray-300">
+                    ผลการทดสอบ (Tests Result)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const pruned = pruneTerminalLog(testsStatus)
+                      setTestsStatus(pruned)
+                      showToast('ตัดทอน Framework Noise เรียบร้อย ⚡', 'info')
+                    }}
+                    className="text-[11px] text-purple-400 hover:text-purple-300 flex items-center gap-1"
+                    title="ตัดทอน framework stack trace และ terminal noise ตาม GODKILLER-ZERO §2.3"
+                  >
+                    <Zap className="w-3 h-3" />
+                    ย่อ Log (Pruner)
+                  </button>
+                </div>
                 <input
                   type="text"
                   value={testsStatus}
@@ -173,9 +244,24 @@ export default function BuildResultModal({
             </>
           ) : (
             <div>
-              <label className="block text-xs font-semibold text-gray-300 mb-1">
-                Raw Result Markdown
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-semibold text-gray-300">
+                  Raw Result Markdown
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const pruned = pruneTerminalLog(rawMarkdown)
+                    setRawMarkdown(pruned)
+                    showToast('ตัดทอน Framework Noise เรียบร้อย ⚡', 'info')
+                  }}
+                  className="text-[11px] text-purple-400 hover:text-purple-300 flex items-center gap-1"
+                  title="ตัดทอน framework stack trace และ terminal noise ตาม GODKILLER-ZERO §2.3"
+                >
+                  <Zap className="w-3 h-3" />
+                  ย่อ Log (Pruner)
+                </button>
+              </div>
               <textarea
                 value={rawMarkdown}
                 onChange={(e) => setRawMarkdown(e.target.value)}

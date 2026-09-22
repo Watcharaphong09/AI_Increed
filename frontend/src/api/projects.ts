@@ -43,3 +43,11 @@ export async function deleteProject(id: string): Promise<void> {
 export async function approveProject(id: string): Promise<void> {
   await apiClient.post(`/projects/${id}/approve`)
 }
+
+/**
+ * Open project workspace folder in OS Explorer
+ */
+export async function openProjectFolder(id: string): Promise<{ success: boolean; workspace: string }> {
+  const response = await apiClient.post<{ success: boolean; workspace: string }>(`/projects/${id}/open-folder`)
+  return response.data
+}

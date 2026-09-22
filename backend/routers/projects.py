@@ -32,13 +32,16 @@ from backend.models.project import (
     ProjectStatus,
     Requirement,
     Task,
+    TaskStatus,
 )
 from backend.services.markdown_service import MarkdownService
+from backend.services.planner_service import PlannerService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
 markdown_service = MarkdownService()
+planner_service = PlannerService()
 
 
 # ── Pydantic schemas ──────────────────────────────────────────────────────────
@@ -254,15 +257,57 @@ async def approve_project(
     project.status = ProjectStatus.BUILDING
     project.updated_at = datetime.now(timezone.utc)
 
-    # Set draft/pending tasks to READY for handoff
+    # Check if tasks already exist
     tasks_res = await db.execute(
         select(Task).where(Task.project_id == project_id)
     )
-    for t in tasks_res.scalars().all():
-        if t.status in (TaskStatus.DRAFT, TaskStatus.PENDING):
-            t.status = TaskStatus.READY
+    existing_tasks = tasks_res.scalars().all()
 
-    await db.flush()
+    if not existing_tasks:
+        logger.info("No tasks found for project %s. Auto-generating plan and tasks upon approval...", project_id)
+        try:
+            plan = await planner_service.generate_project_plan(project_id, db)
+            for task_data in plan.tasks:
+                task = Task(
+                    project_id=project_id,
+                    task_number=task_data["task_number"],
+                    title=task_data["title"],
+                    goal=task_data["goal"],
+                    status=TaskStatus.READY,
+                )
+                db.add(task)
+
+            import json as _json
+            for dec_data in plan.decisions:
+                dec = Decision(
+                    project_id=project_id,
+                    topic=dec_data.get("topic", ""),
+                    decision=dec_data.get("decision", ""),
+                    reason=dec_data.get("reason", ""),
+                    alternatives=_json.dumps(dec_data.get("alternatives", []), ensure_ascii=False),
+                    impact=dec_data.get("impact", ""),
+                )
+                db.add(dec)
+
+            await db.flush()
+            logger.info("Auto-generated %d task(s) for project %s", len(plan.tasks), project_id)
+        except Exception as exc:
+            logger.warning("Auto plan generation encountered error: %s. Creating fallback core task.", exc)
+            fallback_task = Task(
+                project_id=project_id,
+                task_number=1,
+                title="Implement Core Requirements",
+                goal=project.description or f"Implement core functionality for {project.name}",
+                status=TaskStatus.READY,
+            )
+            db.add(fallback_task)
+            await db.flush()
+    else:
+        # Set existing draft/pending tasks to READY for handoff
+        for t in existing_tasks:
+            if t.status in (TaskStatus.DRAFT, TaskStatus.PENDING):
+                t.status = TaskStatus.READY
+        await db.flush()
 
     try:
         await markdown_service.save_all_files(project_id, db)
@@ -308,3 +353,19 @@ async def list_workspace_files(
             )
 
     return files
+
+
+@router.post("/{project_id}/open-folder")
+async def open_project_folder(
+    project_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Open project workspace directory in OS Explorer."""
+    project = await db.get(Project, project_id)
+    if not project:
+        raise _not_found(project_id)
+
+    workspace = await markdown_service.get_workspace_path(project_id)
+    from backend.services.builder_adapter import BuilderFactory
+    opened = BuilderFactory.get_adapter()._open_folder_in_os(workspace)
+    return {"success": opened, "workspace": str(workspace)}

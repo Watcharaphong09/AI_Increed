@@ -1,9 +1,10 @@
 import { useEffect } from 'react'
-import { CheckCircle2, Clock, AlertTriangle, Rocket, ChevronRight, FileText, Check, RefreshCw } from 'lucide-react'
+import { CheckCircle2, Clock, AlertTriangle, Rocket, ChevronRight, FileText, Check, RefreshCw, FolderOpen } from 'lucide-react'
 import clsx from 'clsx'
 import { useQuery } from '@tanstack/react-query'
 import { useAppStore } from '../store/appStore'
 import { listTasks } from '../api/tasks'
+import { openProjectFolder } from '../api/projects'
 import type { Task, TaskStatus } from '../types'
 
 interface TasksPanelProps {
@@ -15,7 +16,7 @@ export default function TasksPanel({
   onSelectTask,
   onOpenResultModal,
 }: TasksPanelProps) {
-  const { currentProject, tasks, setTasks } = useAppStore()
+  const { currentProject, tasks, setTasks, showToast } = useAppStore()
 
 
   // Fetch tasks from API whenever project changes
@@ -100,6 +101,21 @@ export default function TasksPanel({
           <span className="text-xs font-mono text-gray-400 bg-gray-800/80 px-2.5 py-1 rounded-md border border-gray-700">
             {tasks.filter((t) => t.status === 'COMPLETED' || t.status === 'DONE').length}/{tasks.length} เสร็จแล้ว
           </span>
+          {/* Open workspace folder button */}
+          <button
+            onClick={() => {
+              if (currentProject) {
+                openProjectFolder(currentProject.id)
+                  .then(() => showToast('เปิดโฟลเดอร์ Workspace ใน Explorer แล้ว', 'success'))
+                  .catch(() => showToast('เปิดโฟลเดอร์ไม่สำเร็จ', 'error'))
+              }
+            }}
+            title="เปิดโฟลเดอร์ Workspace ใน Windows Explorer"
+            className="flex items-center gap-1 text-xs px-2.5 py-1 text-gray-300 hover:text-gray-100 hover:bg-gray-800 rounded-md border border-gray-700 transition-colors"
+          >
+            <FolderOpen className="w-3.5 h-3.5 text-amber-400" />
+            <span>โฟลเดอร์ Workspace</span>
+          </button>
           {/* Refresh button */}
           <button
             onClick={() => refetch()}

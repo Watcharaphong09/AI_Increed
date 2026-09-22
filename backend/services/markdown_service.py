@@ -516,6 +516,25 @@ builder: {task.builder}
             constraints_lines.append("- Preserve existing architecture and conventions.")
             constraints_lines.append("- Do not modify unrelated components.")
 
+        # Formal Hoare Contract (GODKILLER-ZERO §3.2)
+        target_files_str = ", ".join(compressed.relevant_files) if compressed and compressed.relevant_files else "Discovered during task implementation"
+        pre_cond = f"Project in {planning_mode} mode. Feature '{task.title}' pending implementation."
+        post_cond = "; ".join(compressed.acceptance_criteria) if compressed and compressed.acceptance_criteria else f"Functionality '{task.title}' operational and verified."
+
+        hoare_contract = f"""```tla
+!AI_INCREED:HOARE_CONTRACT
+TARGET_COORDINATES       :: [{target_files_str}]
+PRE_CONDITION {{P}}        :: {pre_cond}
+COMMAND C                :: Implement TASK-{task.task_number:03d}: {task.goal or task.title}
+POST_CONDITION {{Q}}       :: {post_cond}
+INVARIANT_ASSERTIONS [I] :: [
+  /\\ Scope Boundary: Strictly FORBIDDEN from refactoring unrelated modules or ghost files.
+  /\\ Quality Bound: Maximum function span: 70 lines. Cyclomatic complexity <= 10.
+  /\\ Zero Speculation: Follow requirements explicitly, do not fabricate APIs.
+  /\\ Exit Criteria: DONE IS NOT EVIDENCE. Verify files on disk and ensure build/tests pass.
+]
+```"""
+
         body = f"""
 # TASK-{task.task_number:03d}: {task.title}
 
@@ -532,6 +551,10 @@ builder: {task.builder}
 - **Project:** {project_name}
 - **Planning Mode:** {planning_mode}
 - **Priority:** {task.priority}
+
+## Formal Contract (Hoare Logic)
+
+{hoare_contract}
 
 ## Requirements
 
@@ -551,10 +574,10 @@ builder: {task.builder}
 
 ## Builder Instructions
 
-1. Implement only this task according to the acceptance criteria.
+1. Implement only this task according to the formal contract and acceptance criteria.
 2. Read the relevant project files and `.handoff/TASK-{task.task_number:03d}/manifest.json` before modifying code.
 3. Work inside the assigned project workspace boundary.
-4. Run appropriate tests after implementation.
+4. Run appropriate tests/build checks after implementation.
 5. Report changed files, test results, and final status when done.
 """
         return frontmatter + "\n" + body

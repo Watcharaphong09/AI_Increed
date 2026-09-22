@@ -95,7 +95,7 @@ class ContextService:
         result = await db.execute(
             select(Task).where(
                 Task.project_id == project_id,
-                Task.status == TaskStatus.DONE,
+                Task.status.in_([TaskStatus.COMPLETED, TaskStatus.DONE]),
                 Task.task_number < task.task_number,
             )
         )

@@ -86,29 +86,50 @@ class BuilderCapabilityDetector:
         exe_path: Optional[Path] = None
 
         if system == "Windows":
-            # 1. Check common Windows install locations
+            # 1. Check common Windows install locations (Antigravity IDE & Antigravity)
             local_appdata = os.environ.get("LOCALAPPDATA", "")
+            prog_files = os.environ.get("ProgramFiles", "C:\\Program Files")
+            prog_files_x86 = os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)")
+
             candidates = [
+                Path(local_appdata) / "Programs" / "Antigravity IDE" / "Antigravity IDE.exe",
                 Path(local_appdata) / "Programs" / "Antigravity" / "Antigravity.exe",
-                Path(os.environ.get("ProgramFiles", "C:\\Program Files")) / "Antigravity" / "Antigravity.exe",
-                Path(os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)")) / "Antigravity" / "Antigravity.exe",
+                Path(prog_files) / "Antigravity IDE" / "Antigravity IDE.exe",
+                Path(prog_files) / "Antigravity" / "Antigravity.exe",
+                Path(prog_files_x86) / "Antigravity IDE" / "Antigravity IDE.exe",
+                Path(prog_files_x86) / "Antigravity" / "Antigravity.exe",
             ]
             for candidate in candidates:
                 if candidate.exists() and candidate.is_file():
                     exe_path = candidate
                     break
 
-            # 2. Check PATH for Antigravity or agy
+            # 2. Check CLI in PATH or Antigravity IDE bin
+            cli_candidates = [
+                Path(local_appdata) / "Programs" / "Antigravity IDE" / "bin" / "antigravity-ide.cmd",
+                Path(prog_files) / "Antigravity IDE" / "bin" / "antigravity-ide.cmd",
+            ]
+            for cli_candidate in cli_candidates:
+                if cli_candidate.exists() and cli_candidate.is_file():
+                    cap.cli = True
+                    cap.details["cli_path"] = str(cli_candidate)
+                    break
+
+            if not cap.cli:
+                which_cli = shutil.which("antigravity-ide") or shutil.which("agy") or shutil.which("antigravity")
+                if which_cli:
+                    cap.cli = True
+                    cap.details["cli_path"] = which_cli
+
+            # 3. Check PATH for Antigravity or agy
             if not exe_path:
-                which_exe = shutil.which("Antigravity.exe") or shutil.which("antigravity.exe")
+                which_exe = (
+                    shutil.which("Antigravity IDE.exe")
+                    or shutil.which("Antigravity.exe")
+                    or shutil.which("antigravity.exe")
+                )
                 if which_exe:
                     exe_path = Path(which_exe)
-
-            # 3. Check CLI in PATH
-            which_cli = shutil.which("agy") or shutil.which("antigravity")
-            if which_cli:
-                cap.cli = True
-                cap.details["cli_path"] = which_cli
 
         elif system == "Darwin":  # macOS
             mac_app = Path("/Applications/Antigravity.app")
@@ -292,22 +313,20 @@ class AntigravityAdapter(BuilderAdapter):
         task_filename = f"TASK-{task.task_number:03d}.md"
         task_rel_path = f"tasks/{task_filename}"
 
-        # 2. Build concise builder instruction (Section 17)
+        # 2. Build concise builder instruction (Section 17 & GODKILLER-ZERO Rules)
         instruction_text = (
-            f"# Builder Instruction\n\n"
-            f"Implement TASK-{task.task_number:03d}.\n\n"
-            f"Read:\n"
-            f"- {task_rel_path}\n"
-            f"- .handoff/TASK-{task.task_number:03d}/manifest.json\n\n"
-            f"Work inside the assigned project workspace:\n"
-            f"`{workspace}`\n\n"
-            f"Do not modify unrelated features.\n"
-            f"Run appropriate tests.\n\n"
-            f"When finished, report:\n"
-            f"- Changed files\n"
-            f"- Tests\n"
-            f"- Issues\n"
-            f"- Final status\n"
+            f"# Builder Instruction: TASK-{task.task_number:03d}\n\n"
+            f"You are the Builder Agent (Antigravity). Implement TASK-{task.task_number:03d}: {task.title}\n\n"
+            f"## Contract Coordinates\n"
+            f"- **Workspace:** `{workspace}`\n"
+            f"- **Task Spec:** `{task_rel_path}`\n"
+            f"- **Context Manifest:** `.handoff/TASK-{task.task_number:03d}/manifest.json`\n\n"
+            f"## Invariants & Guardrails (GODKILLER-ZERO Formal Contract)\n"
+            f"1. **Target Bound:** Modify only relevant files mapped to this task. Do not ghost-edit unrelated files.\n"
+            f"2. **Complexity Bound:** Keep functions <= 70 lines. Cyclomatic complexity <= 10.\n"
+            f"3. **Done != Evidence:** Verify changes on disk, run tests/build checks, and report actual modified files.\n"
+            f"4. **First-Token Structural:** Deliver working code directly without unnecessary conversational filler.\n\n"
+            f"When finished, return result summary (changed files, test status, notes) to record in workspace.\n"
         )
         instruction_path = handoff_dir / "instruction.md"
         instruction_path.write_text(instruction_text, encoding="utf-8")
