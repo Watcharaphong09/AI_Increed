@@ -36,15 +36,82 @@ from backend.services.ai_provider import ProviderFactory
 
 logger = logging.getLogger(__name__)
 
-# ── Question budget per planning mode ────────────────────────────────────────
-QUESTION_BUDGET: dict[str, int | str] = {
-    PlanningMode.QUICK: 3,
-    PlanningMode.STANDARD: 5,
-    PlanningMode.DETAILED: 7,
-    PlanningMode.DEEP: 15,          # phase-based; treated as large budget
-    PlanningMode.ARCHITECT: 999,    # unlimited until critical requirements met
-    PlanningMode.AUTO: 5,           # default until complexity known
+# ── Planning Mode Policies (Budget, Rounds, Autonomy) ─────────────────────────
+MODE_POLICIES: dict[str, dict[str, Any]] = {
+    PlanningMode.QUICK.value: {
+        "budget": 2,
+        "max_rounds": 1,
+        "label": "QUICK",
+        "description": "เน้นความเร็วสูงสุด: ถามสั้นๆ 1-2 ข้อเฉพาะจุดสำคัญ (Core Idea) ในรอบแรกเท่านั้น และเมื่อผู้ใช้ตอบมาแล้วให้หยุดถามทันที (`questions: []`) คิดและตัดสินใจเลือกค่าเริ่มต้นทางเทคนิคแทนผู้ใช้ทันที (status: DEFAULTED) และตั้ง is_ready_to_build: true",
+    },
+    PlanningMode.STANDARD.value: {
+        "budget": 3,
+        "max_rounds": 2,
+        "label": "STANDARD",
+        "description": "โหมดมาตรฐาน: ถามฟีเจอร์หลัก ฐานข้อมูล และ flow พื้นฐาน ไม่เกิน 2-3 ข้อต่อรอบ สูงสุด 2 รอบ จากนั้นเติมส่วนที่เหลือเป็น DEFAULTED",
+    },
+    PlanningMode.DETAILED.value: {
+        "budget": 4,
+        "max_rounds": 3,
+        "label": "DETAILED",
+        "description": "โหมดละเอียด: ถามครอบคลุม data validation, สิทธิ์การใช้งาน (roles) และ edge cases 3-4 ข้อต่อรอบ ไม่เกิน 3 รอบ",
+    },
+    PlanningMode.DEEP.value: {
+        "budget": 5,
+        "max_rounds": 4,
+        "label": "DEEP",
+        "description": "โหมดเจาะลึก: เจาะลึก Database Schema, API contract และ Error handling 4-5 ข้อต่อรอบ ไม่เกิน 4 รอบ",
+    },
+    PlanningMode.ARCHITECT.value: {
+        "budget": 6,
+        "max_rounds": 5,
+        "label": "ARCHITECT",
+        "description": "โหมดสถาปัตยกรรม: วิเคราะห์ High Availability, Security, Architecture pattern และ Scaling 5-6 ข้อต่อรอบ ไม่เกิน 5 รอบ",
+    },
+    PlanningMode.AUTO.value: {
+        "budget": 3,
+        "max_rounds": 2,
+        "label": "AUTO (STANDARD)",
+        "description": "โหมดอัตโนมัติ: ดำเนินการแบบ STANDARD ถามไม่เกิน 2-3 ข้อต่อรอบ ไม่เกิน 2 รอบ",
+    },
 }
+
+def count_previous_question_rounds(conversation_history: list[dict]) -> int:
+    """Count how many previous assistant turns occurred in history."""
+    return sum(1 for m in conversation_history if m.get("role") in ("assistant", "planner"))
+
+def build_planner_system_prompt(planning_mode: str, conversation_history: list[dict]) -> tuple[str, dict[str, Any], int]:
+    """Build dynamic system prompt with strict mode policy, round limits, and guidelines."""
+    policy = MODE_POLICIES.get(planning_mode) or MODE_POLICIES[PlanningMode.STANDARD.value]
+    prev_rounds = count_previous_question_rounds(conversation_history)
+    current_round = prev_rounds + 1
+    max_rounds = policy["max_rounds"]
+    is_final_round = prev_rounds >= max_rounds
+
+    if is_final_round:
+        round_guideline = f"""\
+⚠️ **คำสั่งสำคัญพิเศษ (ถึงเพดานรอบสูงสุดแล้ว - ห้ามถามต่อ):**
+- คุณได้รับข้อมูลเพียงพอแล้ว และถึงเพดานรอบสูงสุด ({max_rounds} รอบ) ของโหมด {policy['label']} แล้ว
+- **ห้ามถามคำถามเพิ่มเด็ดขาด! ให้ส่ง `"questions": []` (ต้องเป็น array ว่างเท่านั้น)**
+- สำหรับรายละเอียดทางเทคนิคที่ผู้ใช้ไม่ได้ระบุ ให้คุณคิดและตัดสินใจแทนผู้ใช้ทันที โดยสร้าง `requirements_update` ด้วย status "DEFAULTED" (เช่น การเลือก Database, Framework, Styling, Error Handling ที่เหมาะสมที่สุด)
+- **ต้องตั้งค่า `"is_ready_to_build": true` เสมอ** เพื่อเปิดให้ผู้ใช้กด Approve & Build ได้ทันที"""
+        effective_budget = 0
+    else:
+        effective_budget = policy["budget"]
+        round_guideline = f"""\
+💡 **คำแนะนำสำหรับรอบนี้ (รอบที่ {current_round}/{max_rounds}):**
+- ถามเฉพาะคำถามที่จำเป็นอย่างยิ่ง ไม่เกิน {effective_budget} ข้อ
+- ในโหมด {policy['label']}: ไม่จำเป็นต้องถามทุกเรื่อง หากผู้ใช้ให้ไอเดียหลักมาแล้ว สามารถตัดสินใจค่าเริ่มต้นแทนผู้ใช้ได้เลย และหากประเมินว่าข้อมูลเพียงพอสำหรับการเริ่มพัฒนาแล้ว ให้ตั้ง `"is_ready_to_build": true` ได้ทันที"""
+
+    system = _PLANNER_SYSTEM.format(
+        mode_label=policy["label"],
+        mode_description=policy["description"],
+        budget=effective_budget,
+        current_round_display=current_round,
+        max_rounds=max_rounds,
+        round_guideline=round_guideline,
+    )
+    return system, policy, prev_rounds
 
 # ── Dataclasses ───────────────────────────────────────────────────────────────
 
@@ -107,21 +174,28 @@ class ProjectPlan:
 # ── System prompts ────────────────────────────────────────────────────────────
 
 _PLANNER_SYSTEM = """\
-คุณคือ AI Planner ผู้เชี่ยวชาญด้านการวิเคราะห์ความต้องการซอฟต์แวร์
+คุณคือ AI Planner ผู้เชี่ยวชาญด้านการวิเคราะห์ความต้องการซอฟต์แวร์และการวางแผนพัฒนา
+
+โหมดการทำงานปัจจุบัน: {mode_label}
+นโยบายของโหมด: {mode_description}
+งบประมาณคำถามต่อรอบ: ไม่เกิน {budget} ข้อ
+สถานะรอบการถาม: รอบที่ {current_round_display} จากเพดานสูงสุด {max_rounds} รอบ
 
 หน้าที่ของคุณ:
 1. วิเคราะห์สิ่งที่ผู้ใช้ต้องการจากโปรเจกต์
 2. ตรวจจับ requirement ที่ขาดหายหรือไม่ชัดเจน
-3. ถามคำถามที่จำเป็นเท่านั้น (ไม่เกิน {budget} ข้อ)
+3. ถามคำถามที่จำเป็นตามข้อจำกัดของโหมดปัจจุบัน
 4. ตรวจจับความขัดแย้งระหว่าง requirements
-5. แนะนำ requirement ที่ผู้ใช้มักลืม
+5. แนะนำ requirement หรือเติมค่าเริ่มต้น (status: "DEFAULTED") ให้กับส่วนที่ผู้ใช้ไม่ได้ระบุ
+
+{round_guideline}
 
 กฎสำคัญ:
-- ตอบเป็นภาษาไทยในส่วน "message" เสมอ (เป็นกันเอง ชัดเจน ไม่เป็นทางการเกินไป)
+- ตอบเป็นภาษาไทยในส่วน "message" เสมอ (เป็นกันเอง ชัดเจน ตรงประเด็น)
 - ถามคำถามที่ BLOCKING ก่อนเสมอ
 - อย่าถามในสิ่งที่ผู้ใช้บอกมาแล้ว
-- อย่าถามเกิน {budget} คำถามต่อรอบ
-- ส่งคืนเฉพาะ JSON ที่ถูกต้องตาม schema ด้านล่าง
+- ห้ามถามเกิน {budget} คำถามในรอบนี้
+- ส่งคืนเฉพาะ JSON ที่ถูกต้องตาม schema ด้านล่างเท่านั้น
 
 JSON Schema ที่ต้องส่งคืน:
 {{
@@ -241,8 +315,7 @@ class PlannerService:
         Returns:
             PlannerResponse with Thai message, questions, suggestions, etc.
         """
-        budget = QUESTION_BUDGET.get(planning_mode, 5)
-        system = _PLANNER_SYSTEM.format(budget=budget)
+        system, policy, prev_rounds = build_planner_system_prompt(planning_mode, conversation_history)
 
         # Append the new user message
         messages = list(conversation_history) + [
@@ -252,7 +325,26 @@ class PlannerService:
         provider = ProviderFactory.get_planner()
         raw = await provider.chat(messages, system_prompt=system)
 
-        return self._parse_planner_response(raw)
+        parsed = self._parse_planner_response(raw)
+
+        # ── HARD STOP GUARD (§2.5 Loop Breaker) ──────────────────────────────
+        # If we reached or exceeded max question rounds, or if no questions returned,
+        # terminate question loop and enable is_ready_to_build
+        if prev_rounds >= policy["max_rounds"]:
+            logger.info(
+                "Hard stop reached for project %s (mode: %s, rounds: %d/%d). Overruling questions to [] and is_ready_to_build=True",
+                project_id, planning_mode, prev_rounds, policy["max_rounds"]
+            )
+            parsed.questions = []
+            parsed.is_ready_to_build = True
+        elif len(parsed.questions) > policy["budget"]:
+            parsed.questions = parsed.questions[:policy["budget"]]
+
+        # If zero questions remain, automatically consider plan ready to build
+        if len(parsed.questions) == 0:
+            parsed.is_ready_to_build = True
+
+        return parsed
 
     # ── Streaming variant ─────────────────────────────────────────────────────
 
@@ -266,8 +358,7 @@ class PlannerService:
         Streaming version of analyze_requirement.
         Yields raw text chunks; caller should buffer and parse at end.
         """
-        budget = QUESTION_BUDGET.get(planning_mode, 5)
-        system = _PLANNER_SYSTEM.format(budget=budget)
+        system, policy, prev_rounds = build_planner_system_prompt(planning_mode, conversation_history)
 
         messages = list(conversation_history) + [
             {"role": "user", "content": user_message}

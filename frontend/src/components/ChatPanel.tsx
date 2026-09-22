@@ -475,8 +475,15 @@ export default function ChatPanel() {
   useEffect(() => () => { clearLoadingTimeout() }, [])
 
   const sendMutation = useMutation({
-    mutationFn: ({ projectId, message }: { projectId: string; message: string }) =>
-      sendMessage(projectId, message),
+    mutationFn: ({
+      projectId,
+      message,
+      planningMode,
+    }: {
+      projectId: string
+      message: string
+      planningMode?: string
+    }) => sendMessage(projectId, message, planningMode),
     onSuccess: (response) => {
       clearLoadingTimeout()
       const plannerMessage: Message = {
@@ -521,7 +528,11 @@ export default function ChatPanel() {
     setIsChatLoading(true)
     startLoadingTimeout()
 
-    sendMutation.mutate({ projectId: currentProject.id, message: userMessage.content })
+    sendMutation.mutate({
+      projectId: currentProject.id,
+      message: userMessage.content,
+      planningMode: currentProject.planning_mode,
+    })
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -544,7 +555,11 @@ export default function ChatPanel() {
     setIsChatLoading(true)
     startLoadingTimeout()
 
-    sendMutation.mutate({ projectId: currentProject.id, message: userMessage.content })
+    sendMutation.mutate({
+      projectId: currentProject.id,
+      message: userMessage.content,
+      planningMode: currentProject.planning_mode,
+    })
   }
 
   if (!currentProject) {
@@ -580,6 +595,37 @@ export default function ChatPanel() {
           </button>
         </div>
       )}
+
+      {/* Planning Mode Status Bar */}
+      <div className="flex items-center justify-between px-4 py-2 bg-gray-900/80 border-b border-gray-800/80 text-xs text-gray-400 shrink-0">
+        <div className="flex items-center gap-2">
+          <span className="text-gray-500 font-medium">โหมดวิเคราะห์:</span>
+          <span
+            className={clsx(
+              'font-semibold px-2 py-0.5 rounded text-[11px] uppercase tracking-wider',
+              currentProject.planning_mode === 'QUICK'
+                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                : currentProject.planning_mode === 'ARCHITECT'
+                ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+            )}
+          >
+            {currentProject.planning_mode || 'STANDARD'}
+          </span>
+          <span className="text-gray-500 text-[11px] hidden sm:inline">
+            {currentProject.planning_mode === 'QUICK' &&
+              '• ถาม 1-2 ข้อเฉพาะจุดสำคัญ แล้วสรุปค่าเริ่มต้นพร้อมสร้างทันที'}
+            {currentProject.planning_mode === 'STANDARD' &&
+              '• ถามฟีเจอร์หลักและสถาปัตยกรรม ไม่เกิน 2 รอบ'}
+            {currentProject.planning_mode === 'DETAILED' &&
+              '• ถามครอบคลุม data validation และ edge cases ไม่เกิน 3 รอบ'}
+            {currentProject.planning_mode === 'DEEP' &&
+              '• เจาะลึก Database Schema และ API ไม่เกิน 4 รอบ'}
+            {currentProject.planning_mode === 'ARCHITECT' &&
+              '• วิเคราะห์ System Architecture และ Scaling ไม่เกิน 5 รอบ'}
+          </span>
+        </div>
+      </div>
 
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6">

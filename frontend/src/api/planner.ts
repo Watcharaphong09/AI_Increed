@@ -6,11 +6,16 @@ import type { Message, PlannerResponse, Requirement, ComplexityEstimate } from '
  */
 export async function sendMessage(
   projectId: string,
-  message: string
+  message: string,
+  planningMode?: string
 ): Promise<PlannerResponse> {
+  const payload: { message: string; planning_mode?: string } = { message }
+  if (planningMode) {
+    payload.planning_mode = planningMode
+  }
   const response = await apiClient.post<PlannerResponse>(
     `/projects/${projectId}/chat`,
-    { message }
+    payload
   )
   return response.data
 }

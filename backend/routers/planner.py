@@ -37,7 +37,11 @@ from backend.models.project import (
     Task,
     TaskStatus,
 )
-from backend.services.planner_service import PlannerService
+from backend.services.planner_service import (
+    PlannerService,
+    MODE_POLICIES,
+    count_previous_question_rounds,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/planner", tags=["planner"])
@@ -208,6 +212,14 @@ async def chat(
         }
 
 
+    # Resolve effective planning mode: prefer payload mode if specified, else project mode from DB
+    effective_mode = payload.planning_mode
+    if effective_mode == PlanningMode.AUTO:
+        if project.planning_mode and project.planning_mode != PlanningMode.AUTO:
+            effective_mode = project.planning_mode
+        else:
+            effective_mode = PlanningMode.STANDARD
+
     if not payload.stream:
         # Non-streaming JSON response for standard REST / frontend client
         try:
@@ -215,7 +227,7 @@ async def chat(
                 project_id=project_id,
                 user_message=payload.message,
                 conversation_history=history,
-                planning_mode=payload.planning_mode.value,
+                planning_mode=effective_mode.value,
                 db=db,
             )
 
@@ -300,7 +312,7 @@ async def chat(
             async for chunk in planner_service.analyze_requirement_stream(
                 user_message=payload.message,
                 conversation_history=history,
-                planning_mode=payload.planning_mode.value,
+                planning_mode=effective_mode.value,
             ):
                 full_response += chunk
                 data = json.dumps({"chunk": chunk}, ensure_ascii=False)
@@ -308,6 +320,15 @@ async def chat(
 
             # Parse the full response
             parsed = planner_service._parse_planner_response(full_response)
+
+            # Apply Hard Stop Guard to stream response
+            policy = MODE_POLICIES.get(effective_mode.value) or MODE_POLICIES["STANDARD"]
+            prev_rounds = count_previous_question_rounds(history)
+            if prev_rounds >= policy["max_rounds"] or len(parsed.questions) == 0:
+                parsed.questions = []
+                parsed.is_ready_to_build = True
+            elif len(parsed.questions) > policy["budget"]:
+                parsed.questions = parsed.questions[:policy["budget"]]
 
             questions_data = [
                 {
