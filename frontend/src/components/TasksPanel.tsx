@@ -1,6 +1,9 @@
-import { CheckCircle2, Clock, AlertTriangle, Rocket, ChevronRight, FileText, Check } from 'lucide-react'
+import { useEffect } from 'react'
+import { CheckCircle2, Clock, AlertTriangle, Rocket, ChevronRight, FileText, Check, RefreshCw } from 'lucide-react'
 import clsx from 'clsx'
+import { useQuery } from '@tanstack/react-query'
 import { useAppStore } from '../store/appStore'
+import { listTasks } from '../api/tasks'
 import type { Task, TaskStatus } from '../types'
 
 interface TasksPanelProps {
@@ -12,7 +15,21 @@ export default function TasksPanel({
   onSelectTask,
   onOpenResultModal,
 }: TasksPanelProps) {
-  const { currentProject, tasks } = useAppStore()
+  const { currentProject, tasks, setTasks } = useAppStore()
+
+
+  // Fetch tasks from API whenever project changes
+  const { data: fetchedTasks = [], isLoading, refetch } = useQuery({
+    queryKey: ['tasks', currentProject?.id],
+    queryFn: () => listTasks(currentProject!.id),
+    enabled: !!currentProject,
+    staleTime: 10_000,
+  })
+
+  // Sync to global store
+  useEffect(() => {
+    if (fetchedTasks.length >= 0) setTasks(fetchedTasks)
+  }, [fetchedTasks, setTasks])
 
   if (!currentProject) {
     return (
@@ -79,19 +96,36 @@ export default function TasksPanel({
             รายการงานที่แยกย่อยและพร้อมส่งให้ Antigravity ดำเนินการ
           </p>
         </div>
-        <span className="text-xs font-mono text-gray-400 bg-gray-800/80 px-2.5 py-1 rounded-md border border-gray-700">
-          {tasks.filter((t) => t.status === 'COMPLETED' || t.status === 'DONE').length}/{tasks.length} เสร็จแล้ว
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-mono text-gray-400 bg-gray-800/80 px-2.5 py-1 rounded-md border border-gray-700">
+            {tasks.filter((t) => t.status === 'COMPLETED' || t.status === 'DONE').length}/{tasks.length} เสร็จแล้ว
+          </span>
+          {/* Refresh button */}
+          <button
+            onClick={() => refetch()}
+            disabled={isLoading}
+            title="รีเฟรช Tasks"
+            className="p-1.5 text-gray-500 hover:text-gray-300 hover:bg-gray-800 rounded-md transition-colors"
+          >
+            <RefreshCw className={clsx('w-3.5 h-3.5', isLoading && 'animate-spin')} />
+          </button>
+        </div>
       </div>
 
-      {tasks.length === 0 ? (
+      {isLoading ? (
+        <div className="grid gap-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-24 bg-gray-800/40 rounded-xl animate-pulse" />
+          ))}
+        </div>
+      ) : tasks.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-center space-y-3">
           <FileText className="w-10 h-10 text-gray-600" />
           <p className="text-sm text-gray-400 font-medium">
             ยังไม่มี Task ในโปรเจกต์นี้
           </p>
           <p className="text-xs text-gray-500 max-w-sm">
-            คุยกับ Planner ในแท็บ Chat เพื่อวิเคราะห์ความต้องการ เมื่อครบถ้วนแล้วกด "Approve & Build" ระบบจะสร้าง Task Files ให้อัตโนมัติ
+            คุยกับ Planner ในแท็บ Chat เพื่อวิเคราะห์ความต้องการ เมื่อครบถ้วนแล้วกด "แก้ไข Plan" แล้วกด "สร้าง Plan ใหม่"
           </p>
         </div>
       ) : (

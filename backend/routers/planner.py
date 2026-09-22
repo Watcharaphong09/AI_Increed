@@ -98,6 +98,7 @@ class GeneratePlanRequest(BaseModel):
     save_to_db: bool = True
 
 
+
 # ── Helper ────────────────────────────────────────────────────────────────────
 
 async def _require_project(project_id: str, db: AsyncSession) -> Project:
@@ -111,12 +112,35 @@ async def _require_project(project_id: str, db: AsyncSession) -> Project:
 
 
 def _messages_to_history(messages: list[Message]) -> list[dict]:
-    """Convert DB messages to the format expected by AI providers."""
+    """Convert DB messages to the format expected by AI providers.
+    
+    Planner messages are stored as plain text (message field only).
+    We pass them as 'assistant' role to the AI.
+    """
     history = []
     for msg in messages:
         role = "user" if msg.role == MessageRole.USER else "assistant"
-        history.append({"role": role, "content": msg.content})
+        # Content should already be plain text; include as-is
+        content = msg.content or ""
+        if content:
+            history.append({"role": role, "content": content})
     return history
+
+
+# GODKILLER-ZERO §2.1: Fast-Lane Bypass — short affirmations skip full AI call
+_FAST_LANE_AFFIRMATIONS = frozenset([
+    "yes", "ok", "okay", "proceed", "go", "done", "sure", "continue",
+    "จัดไป", "ตกลง", "ทำต่อ", "ตามนั้น", "โอเค", "ได้", "ดี",
+    "ครับ", "ค่ะ", "ใช่", "เอา", "ต่อ",
+])
+
+def _is_fast_lane(message: str) -> bool:
+    """Return True if message is a short affirmation that needs no AI call."""
+    stripped = message.strip().lower().rstrip("!?.  ")
+    # Max 3 words or 15 characters
+    if len(stripped) > 15 or len(stripped.split()) > 3:
+        return False
+    return stripped in _FAST_LANE_AFFIRMATIONS
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -154,6 +178,26 @@ async def chat(
     )
     db.add(user_msg)
     await db.flush()
+
+    # GODKILLER §2.1: Fast-Lane — respond locally, skip AI call
+    if _is_fast_lane(payload.message) and not payload.stream:
+        fast_reply = "รับทราบ! ดำเนินการต่อได้เลย — กรุณาบอก AI ว่าต้องการทำอะไรต่อไปครับ"
+        fast_msg = Message(
+            project_id=project_id,
+            role=MessageRole.PLANNER,
+            content=fast_reply,
+        )
+        db.add(fast_msg)
+        await db.commit()
+        return {
+            "message": fast_reply,
+            "questions": [],
+            "suggestions": [],
+            "conflicts": [],
+            "is_ready_to_build": False,
+            "requirements_count": 0,
+        }
+
 
     if not payload.stream:
         # Non-streaming JSON response for standard REST / frontend client

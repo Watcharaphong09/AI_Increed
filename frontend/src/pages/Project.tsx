@@ -12,6 +12,7 @@ import ApprovalPanel from '../components/ApprovalPanel'
 import SettingsPanel from '../components/SettingsPanel'
 import HandoffModal from '../components/HandoffModal'
 import BuildResultModal from '../components/BuildResultModal'
+import PlanEditModal from '../components/PlanEditModal'
 
 function ToastNotification() {
   const { toast, clearToast } = useAppStore()
@@ -123,6 +124,7 @@ export default function ProjectPage() {
         />
       )}
 
+      <PlanEditModal />
       <SettingsPanel />
       <ToastNotification />
     </div>

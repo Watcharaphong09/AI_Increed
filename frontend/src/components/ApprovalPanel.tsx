@@ -5,7 +5,7 @@ import { useAppStore } from '../store/appStore'
 import { approveProject } from '../api/projects'
 
 export default function ApprovalPanel() {
-  const { currentProject, isReadyToBuild, showToast, updateProject } = useAppStore()
+  const { currentProject, isReadyToBuild, showToast, updateProject, setShowPlanEdit } = useAppStore()
   const [showConfirm, setShowConfirm] = useState(false)
   const queryClient = useQueryClient()
 
@@ -35,7 +35,7 @@ export default function ApprovalPanel() {
         {/* Edit Plan */}
         <button
           className="flex items-center gap-2 text-sm font-medium text-gray-400 hover:text-gray-200 hover:bg-gray-800 px-3 py-1.5 rounded-lg transition-colors border border-transparent hover:border-gray-700"
-          onClick={() => showToast('ฟีเจอร์แก้ไข Plan กำลังพัฒนา', 'info')}
+          onClick={() => setShowPlanEdit(true)}
         >
           <Edit3 className="w-4 h-4" />
           แก้ไข Plan

@@ -1,5 +1,32 @@
 import { create } from 'zustand'
-import type { Project, Message, Requirement, Task } from '../types'
+import type { Project, Message, Requirement, Task, Question } from '../types'
+
+// MessageMeta stores per-message planner metadata (questions/suggestions/conflicts)
+export interface MessageMeta {
+  questions: Question[]
+  suggestions: string[]
+  conflicts: string[]
+}
+
+// SessionStorage key for messageMeta persistence
+const MESSAGE_META_KEY = 'ai_increed_message_meta'
+
+function loadMessageMeta(): Record<string, MessageMeta> {
+  try {
+    const raw = sessionStorage.getItem(MESSAGE_META_KEY)
+    return raw ? JSON.parse(raw) : {}
+  } catch {
+    return {}
+  }
+}
+
+function saveMessageMeta(meta: Record<string, MessageMeta>) {
+  try {
+    sessionStorage.setItem(MESSAGE_META_KEY, JSON.stringify(meta))
+  } catch {
+    // Ignore storage quota errors
+  }
+}
 
 interface AppStore {
   // Projects
@@ -16,6 +43,11 @@ interface AppStore {
   addMessage: (msg: Message) => void
   setMessages: (msgs: Message[]) => void
   clearMessages: () => void
+
+  // Message metadata (questions/suggestions/conflicts per planner message)
+  messageMeta: Record<string, MessageMeta>
+  mergeMessageMeta: (messageId: string, meta: MessageMeta) => void
+  clearMessageMeta: () => void
 
   // UI state
   isChatLoading: boolean
@@ -51,6 +83,10 @@ interface AppStore {
   setSelectedTaskForResult: (task: Task | null) => void
   activeMainTab: 'chat' | 'tasks'
   setActiveMainTab: (tab: 'chat' | 'tasks') => void
+
+  // Plan Edit modal
+  showPlanEdit: boolean
+  setShowPlanEdit: (v: boolean) => void
 }
 
 export const useAppStore = create<AppStore>((set) => ({
@@ -77,6 +113,19 @@ export const useAppStore = create<AppStore>((set) => ({
   addMessage: (msg) => set((state) => ({ messages: [...state.messages, msg] })),
   setMessages: (msgs) => set({ messages: msgs }),
   clearMessages: () => set({ messages: [] }),
+
+  // Message metadata — persisted in sessionStorage
+  messageMeta: loadMessageMeta(),
+  mergeMessageMeta: (messageId, meta) =>
+    set((state) => {
+      const updated = { ...state.messageMeta, [messageId]: meta }
+      saveMessageMeta(updated)
+      return { messageMeta: updated }
+    }),
+  clearMessageMeta: () => {
+    saveMessageMeta({})
+    set({ messageMeta: {} })
+  },
 
   // UI state
   isChatLoading: false,
@@ -115,4 +164,8 @@ export const useAppStore = create<AppStore>((set) => ({
   setSelectedTaskForResult: (task) => set({ selectedTaskForResult: task }),
   activeMainTab: 'chat',
   setActiveMainTab: (tab) => set({ activeMainTab: tab }),
+
+  // Plan Edit
+  showPlanEdit: false,
+  setShowPlanEdit: (v) => set({ showPlanEdit: v }),
 }))
