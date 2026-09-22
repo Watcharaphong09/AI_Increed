@@ -8,6 +8,7 @@ import { getSettings } from '../api/settings'
 
 export default function Header() {
   const {
+    currentProject,
     setShowSettings,
     activeMainTab,
     setActiveMainTab,
@@ -84,6 +85,41 @@ export default function Header() {
           </button>
         </nav>
       </div>
+
+      {/* Center: Active Project Status Badge */}
+      {currentProject && (
+        <div className="hidden md:flex items-center gap-2 px-3 py-1 bg-gray-950/70 border border-gray-800 rounded-lg">
+          <span className="text-xs text-gray-300 font-medium truncate max-w-[170px]">
+            {currentProject.name}
+          </span>
+          <span
+            className={clsx(
+              'text-[11px] font-semibold px-2 py-0.5 rounded-full border flex items-center gap-1.5',
+              currentProject.status === 'BUILDING'
+                ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                : currentProject.status === 'DONE'
+                ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                : 'bg-blue-500/10 text-blue-300 border-blue-500/30'
+            )}
+          >
+            <span
+              className={clsx(
+                'w-1.5 h-1.5 rounded-full',
+                currentProject.status === 'BUILDING'
+                  ? 'bg-amber-400 animate-pulse'
+                  : currentProject.status === 'DONE'
+                  ? 'bg-emerald-400'
+                  : 'bg-blue-400'
+              )}
+            />
+            {currentProject.status === 'BUILDING'
+              ? 'กำลัง Build'
+              : currentProject.status === 'DONE'
+              ? 'เสร็จสมบูรณ์'
+              : 'กำลังวางแผน'}
+          </span>
+        </div>
+      )}
 
       {/* Right: AI Planner badge + Antigravity status + LOCAL + Settings */}
       <div className="flex items-center gap-3">

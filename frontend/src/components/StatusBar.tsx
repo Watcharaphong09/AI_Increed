@@ -87,8 +87,10 @@ export default function StatusBar() {
       <div className="flex items-center gap-1.5">
         <span className="text-xs text-gray-500">Complexity:</span>
         <span className="text-xs font-medium text-gray-300">
-          {currentProject.complexity_score !== null
-            ? `${currentProject.complexity_score}/100`
+          {currentProject.complexity_score && currentProject.complexity_score > 0
+            ? `${Math.round(currentProject.complexity_score)}/100`
+            : currentProject.planning_mode === 'QUICK'
+            ? '15/100 (ต่ำ/Quick)'
             : 'ยังไม่ได้วัด'}
         </span>
       </div>
@@ -100,10 +102,20 @@ export default function StatusBar() {
         <span className="text-xs text-gray-500">สถานะ:</span>
         <span
           className={clsx(
-            'text-xs font-semibold px-2 py-0.5 rounded border',
+            'text-xs font-semibold px-2 py-0.5 rounded border flex items-center gap-1.5',
             statusColor(currentProject.status)
           )}
         >
+          <span
+            className={clsx(
+              'w-1.5 h-1.5 rounded-full',
+              currentProject.status === 'BUILDING'
+                ? 'bg-amber-400 animate-pulse'
+                : currentProject.status === 'DONE'
+                ? 'bg-emerald-400'
+                : 'bg-blue-400'
+            )}
+          />
           {statusLabel(currentProject.status)}
         </span>
       </div>

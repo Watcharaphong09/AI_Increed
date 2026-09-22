@@ -564,6 +564,7 @@ INVARIANT_ASSERTIONS [I] :: [
   /\\ Scope Boundary: Strictly FORBIDDEN from refactoring unrelated modules or ghost files.
   /\\ Quality Bound: Maximum function span: 70 lines. Cyclomatic complexity <= 10.
   /\\ Zero Speculation: Follow requirements explicitly, do not fabricate APIs.
+  /\\ Token & Screenshot Policy: Prioritize terminal build and test logs. Strictly FORBIDDEN from spamming repeated screenshots in a loop (burns tokens). Laptop display scaling (80%-100%) is acceptable; DO NOT loop over micro-adjustments.
   /\\ Exit Criteria: DONE IS NOT EVIDENCE. Verify files on disk and ensure build/tests pass.
 ]
 ```"""

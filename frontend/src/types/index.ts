@@ -102,18 +102,23 @@ export interface RoleOverride {
 }
 
 export interface Settings {
+  workspace_dir?: string
   ai_provider?: string
   ai_base_url?: string
+  ai_api_key?: string
   ai_api_key_masked?: string
   ai_model?: string
   planner_provider?: string
   planner_base_url?: string
+  planner_api_key?: string
   planner_api_key_masked?: string
   planner_model?: string
   reviewer_provider?: string
   reviewer_base_url?: string
+  reviewer_api_key?: string
   reviewer_api_key_masked?: string
   reviewer_model?: string
+  ollama_base_url?: string
   // Legacy aliases
   provider?: AIProvider
   api_key?: string

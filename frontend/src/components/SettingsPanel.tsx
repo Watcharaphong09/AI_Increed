@@ -10,6 +10,9 @@ import {
   AlertCircle,
   Check,
   Cpu,
+  Folder,
+  Zap,
+  Terminal,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -49,10 +52,11 @@ export default function SettingsPanel() {
   const { showSettings, setShowSettings, showToast, builderCapabilities } = useAppStore()
   const queryClient = useQueryClient()
 
-  // Active planning AI choice: 'gemini' | 'openai'
-  const [activeAi, setActiveAi] = useState<'gemini' | 'openai'>('gemini')
+  // Active planning AI choice
+  const [activeAi, setActiveAi] = useState<'gemini' | 'openai' | 'groq' | 'ollama' | 'custom'>('gemini')
 
   // Form states
+  const [workspaceDir, setWorkspaceDir] = useState('')
   const [apiKey, setApiKey] = useState('')
   const [baseUrl, setBaseUrl] = useState('')
   const [model, setModel] = useState('')
@@ -74,45 +78,66 @@ export default function SettingsPanel() {
   // Detect which provider is configured from loaded settings
   useEffect(() => {
     if (settings) {
+      if (settings.workspace_dir) {
+        setWorkspaceDir(settings.workspace_dir)
+      }
       const currentBaseUrl = settings.ai_base_url || settings.base_url || ''
       const currentModel = settings.ai_model || settings.model || ''
+
       const isGemini =
         currentBaseUrl.includes('googleapis') ||
         currentModel.toLowerCase().includes('gemini') ||
         (settings.planner_base_url && settings.planner_base_url.includes('googleapis'))
 
+      const isGroq = currentBaseUrl.includes('groq.com')
+      const isOllama = currentBaseUrl.includes('11434') || currentBaseUrl.includes('ollama')
+      const isOpenAI = currentBaseUrl.includes('openai.com') || currentModel.toLowerCase().includes('gpt')
+
       if (isGemini) {
         setActiveAi('gemini')
-        setBaseUrl(currentBaseUrl || 'https://generativelanguage.googleapis.com/v1beta/openai/')
-        setModel(currentModel || 'gemini-2.5-flash')
-        setApiKey(settings.ai_api_key_masked || settings.api_key || '')
-      } else {
+      } else if (isGroq) {
+        setActiveAi('groq')
+      } else if (isOllama) {
+        setActiveAi('ollama')
+      } else if (isOpenAI) {
         setActiveAi('openai')
-        setBaseUrl(currentBaseUrl || 'https://api.openai.com/v1')
-        setModel(currentModel || 'gpt-4o-mini')
-        setApiKey(settings.ai_api_key_masked || settings.api_key || '')
+      } else {
+        setActiveAi('custom')
       }
+
+      setBaseUrl(currentBaseUrl || 'https://generativelanguage.googleapis.com/v1beta/openai/')
+      setModel(currentModel || 'gemini-2.5-flash')
+      setApiKey(settings.ai_api_key_masked || settings.api_key || '')
     }
   }, [settings])
 
   // Presets switcher
-  const handleSelectPreset = (preset: 'gemini' | 'openai') => {
+  const handleSelectPreset = (preset: 'gemini' | 'openai' | 'groq' | 'ollama') => {
     setActiveAi(preset)
     setConnectionStatus(null)
 
     if (preset === 'gemini') {
       setBaseUrl('https://generativelanguage.googleapis.com/v1beta/openai/')
       setModel('gemini-2.5-flash')
-      // If switching to gemini and apiKey currently looks like openai key, clear it or keep if gemini
-      if (apiKey.startsWith('sk-')) {
+      if (apiKey.startsWith('sk-') || apiKey.startsWith('gsk_')) {
         setApiKey('')
       }
-    } else {
+    } else if (preset === 'openai') {
       setBaseUrl('https://api.openai.com/v1')
       setModel('gpt-4o-mini')
-      if (apiKey.startsWith('AQ.')) {
+      if (apiKey.startsWith('AQ.') || apiKey.startsWith('gsk_')) {
         setApiKey('')
       }
+    } else if (preset === 'groq') {
+      setBaseUrl('https://api.groq.com/openai/v1')
+      setModel('llama-3.3-70b-versatile')
+      if (apiKey.startsWith('AQ.') || apiKey.startsWith('sk-proj-')) {
+        setApiKey('')
+      }
+    } else if (preset === 'ollama') {
+      setBaseUrl('http://localhost:11434/v1')
+      setModel('qwen2.5-coder:7b')
+      setApiKey('ollama-local')
     }
   }
 
@@ -150,13 +175,20 @@ export default function SettingsPanel() {
   })
 
   const handleSave = () => {
-    const data: any = {
-      ai_provider: 'openai', // Both Gemini and OpenAI use the OpenAI-compatible endpoint
+    const isOllama = activeAi === 'ollama' || baseUrl.includes('11434')
+    const provider = isOllama ? 'ollama' : 'openai'
+
+    const data: Partial<Settings> = {
+      ai_provider: provider,
       ai_base_url: baseUrl.trim(),
       ai_model: model.trim(),
-      planner_provider: 'openai',
+      planner_provider: provider,
       planner_base_url: baseUrl.trim(),
       planner_model: model.trim(),
+    }
+
+    if (workspaceDir.trim()) {
+      data.workspace_dir = workspaceDir.trim()
     }
 
     // Only update api_key if user typed something new (not masked)
@@ -179,12 +211,12 @@ export default function SettingsPanel() {
       />
 
       {/* Panel Container */}
-      <div className="relative w-full max-w-md bg-gray-900 border-l border-gray-800 h-full flex flex-col shadow-2xl overflow-hidden z-10">
+      <div className="relative w-full max-w-lg bg-gray-900 border-l border-gray-800 h-full flex flex-col shadow-2xl overflow-hidden z-10">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800 bg-gray-950/40 shrink-0">
           <div className="flex items-center gap-2">
             <Cpu className="w-5 h-5 text-blue-400" />
-            <h2 className="text-base font-semibold text-gray-100">ตั้งค่า AI Planner</h2>
+            <h2 className="text-base font-semibold text-gray-100">ตั้งค่าระบบ (Settings)</h2>
           </div>
           <button
             onClick={() => setShowSettings(false)}
@@ -200,22 +232,44 @@ export default function SettingsPanel() {
           <div className="flex items-start gap-2.5 px-3.5 py-2.5 rounded-lg bg-blue-950/30 border border-blue-800/40 text-xs text-blue-200/90 leading-relaxed">
             <AlertCircle className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
             <span>
-              API Key จะถูกบันทึกไว้ในไฟล์ <code className="text-white font-mono">.env</code> ภายในเครื่องของคุณเท่านั้น ปลอดภัย ไม่มีการส่งออกภายนอก
+              ข้อมูลทั้งหมด (API Key และ Workspace Path) จะถูกบันทึกไว้ในไฟล์ <code className="text-white font-mono">.env</code> ภายในเครื่องของคุณเท่านั้น ปลอดภัย ไม่มีการส่งออกภายนอก
             </span>
           </div>
 
-          {/* AI Selection Cards: Gemini vs GPT */}
-          <div className="space-y-2">
+          {/* Section 1: Workspace Folder */}
+          <div className="bg-gray-950/60 border border-gray-800 rounded-xl p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <Folder className="w-4 h-4 text-amber-400" />
+              <label className="text-xs font-semibold text-gray-200">
+                โฟลเดอร์สำหรับสร้างโปรเจกต์ (Workspace Folder)
+              </label>
+            </div>
+            <div className="space-y-1">
+              <input
+                type="text"
+                value={workspaceDir}
+                onChange={(e) => setWorkspaceDir(e.target.value)}
+                className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-xs text-gray-100 font-mono focus:outline-none focus:border-amber-500 placeholder-gray-600"
+                placeholder="เช่น C:\Users\Username\Desktop\__Dev Projects__"
+              />
+              <p className="text-[11px] text-gray-400 leading-relaxed pt-1">
+                💡 <strong>สำหรับส่งต่อให้เพื่อน:</strong> เพื่อนสามารถระบุ Path โฟลเดอร์ที่ต้องการให้ AI สร้างโปรเจกต์และเขียนไฟล์ลงในเครื่องของเพื่อนได้โดยตรง
+              </p>
+            </div>
+          </div>
+
+          {/* Section 2: AI Provider Presets */}
+          <div className="space-y-2.5">
             <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wide">
-              เลือก AI สำหรับวางแผน (Planning AI)
+              เลือก AI สำหรับวางแผน (Planning AI Provider)
             </label>
-            <div className="grid grid-cols-2 gap-3">
-              {/* Google Gemini Card */}
+            <div className="grid grid-cols-2 gap-2.5">
+              {/* Google Gemini */}
               <button
                 type="button"
                 onClick={() => handleSelectPreset('gemini')}
                 className={clsx(
-                  'p-3.5 rounded-xl border text-left transition-all flex flex-col justify-between gap-2.5',
+                  'p-3 rounded-xl border text-left transition-all flex flex-col justify-between gap-1.5',
                   activeAi === 'gemini'
                     ? 'border-blue-500 bg-blue-950/40 shadow-md shadow-blue-950/50'
                     : 'border-gray-800 bg-gray-950/40 hover:border-gray-700 text-gray-400'
@@ -227,21 +281,21 @@ export default function SettingsPanel() {
                     Google Gemini
                   </div>
                   {activeAi === 'gemini' && (
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_6px_#34d399]" />
+                    <span className="w-2 h-2 rounded-full bg-blue-400 shadow-[0_0_6px_#60a5fa]" />
                   )}
                 </div>
                 <div>
-                  <p className="text-[11px] font-mono text-blue-300 font-medium">gemini-2.5-flash</p>
-                  <p className="text-[10px] text-emerald-400 font-medium mt-0.5">✓ แนะนำ (ใช้งานได้ทันที)</p>
+                  <p className="text-[11px] font-mono text-blue-300 font-medium truncate">gemini-2.5-flash</p>
+                  <p className="text-[10px] text-emerald-400 font-medium mt-0.5">✓ แนะนำ (ฟรี & แม่นยำ)</p>
                 </div>
               </button>
 
-              {/* OpenAI (GPT) Card */}
+              {/* OpenAI (GPT) */}
               <button
                 type="button"
                 onClick={() => handleSelectPreset('openai')}
                 className={clsx(
-                  'p-3.5 rounded-xl border text-left transition-all flex flex-col justify-between gap-2.5',
+                  'p-3 rounded-xl border text-left transition-all flex flex-col justify-between gap-1.5',
                   activeAi === 'openai'
                     ? 'border-emerald-500 bg-emerald-950/30 shadow-md shadow-emerald-950/50'
                     : 'border-gray-800 bg-gray-950/40 hover:border-gray-700 text-gray-400'
@@ -257,26 +311,84 @@ export default function SettingsPanel() {
                   )}
                 </div>
                 <div>
-                  <p className="text-[11px] font-mono text-emerald-300 font-medium">gpt-4o-mini</p>
-                  <p className="text-[10px] text-gray-400 mt-0.5">ใช้เครดิตบัญชี OpenAI</p>
+                  <p className="text-[11px] font-mono text-emerald-300 font-medium truncate">gpt-4o-mini</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">มาตรฐาน OpenAI</p>
+                </div>
+              </button>
+
+              {/* Groq Cloud */}
+              <button
+                type="button"
+                onClick={() => handleSelectPreset('groq')}
+                className={clsx(
+                  'p-3 rounded-xl border text-left transition-all flex flex-col justify-between gap-1.5',
+                  activeAi === 'groq'
+                    ? 'border-amber-500 bg-amber-950/40 shadow-md shadow-amber-950/50'
+                    : 'border-gray-800 bg-gray-950/40 hover:border-gray-700 text-gray-400'
+                )}
+              >
+                <div className="flex items-center justify-between w-full">
+                  <div className="flex items-center gap-1.5 font-semibold text-xs text-gray-100">
+                    <Zap className="w-4 h-4 text-amber-400" />
+                    Groq Cloud
+                  </div>
+                  {activeAi === 'groq' && (
+                    <span className="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_6px_#fbbf24]" />
+                  )}
+                </div>
+                <div>
+                  <p className="text-[11px] font-mono text-amber-300 font-medium truncate">llama-3.3-70b</p>
+                  <p className="text-[10px] text-amber-400 font-medium mt-0.5">⚡ เร็วพิเศษ & โควต้าฟรี</p>
+                </div>
+              </button>
+
+              {/* Ollama (Local) */}
+              <button
+                type="button"
+                onClick={() => handleSelectPreset('ollama')}
+                className={clsx(
+                  'p-3 rounded-xl border text-left transition-all flex flex-col justify-between gap-1.5',
+                  activeAi === 'ollama'
+                    ? 'border-purple-500 bg-purple-950/40 shadow-md shadow-purple-950/50'
+                    : 'border-gray-800 bg-gray-950/40 hover:border-gray-700 text-gray-400'
+                )}
+              >
+                <div className="flex items-center justify-between w-full">
+                  <div className="flex items-center gap-1.5 font-semibold text-xs text-gray-100">
+                    <Terminal className="w-4 h-4 text-purple-400" />
+                    Ollama (Local)
+                  </div>
+                  {activeAi === 'ollama' && (
+                    <span className="w-2 h-2 rounded-full bg-purple-400 shadow-[0_0_6px_#c084fc]" />
+                  )}
+                </div>
+                <div>
+                  <p className="text-[11px] font-mono text-purple-300 font-medium truncate">qwen2.5-coder:7b</p>
+                  <p className="text-[10px] text-purple-300 font-medium mt-0.5">🔒 ออฟไลน์ 100%</p>
                 </div>
               </button>
             </div>
           </div>
 
-          {/* Configuration Fields for Selected AI */}
+          {/* Section 3: Configuration Fields for Selected AI */}
           <div className="bg-gray-950/60 border border-gray-800 rounded-xl p-4 space-y-3.5">
-            <h3 className="text-xs font-semibold text-gray-200 flex items-center gap-1.5">
-              <span>ตั้งค่าพารามิเตอร์ของ</span>
-              <span className="text-blue-400">
-                {activeAi === 'gemini' ? 'Google Gemini' : 'OpenAI GPT'}
+            <h3 className="text-xs font-semibold text-gray-200 flex items-center justify-between">
+              <span>พารามิเตอร์ของ AI Planner</span>
+              <span className="text-[11px] text-blue-400 font-medium">
+                {activeAi === 'gemini' && 'Google Gemini'}
+                {activeAi === 'openai' && 'OpenAI GPT'}
+                {activeAi === 'groq' && 'Groq (Llama 3.3)'}
+                {activeAi === 'ollama' && 'Ollama (Local)'}
+                {activeAi === 'custom' && 'กำหนดเอง (Custom)'}
               </span>
             </h3>
 
             {/* API Key Input */}
             <div className="space-y-1">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-medium text-gray-300">API Key</label>
+                <label className="text-xs font-medium text-gray-300">
+                  {activeAi === 'ollama' ? 'API Key (ไม่จำเป็นสำหรับ Ollama)' : 'API Key'}
+                </label>
                 {settings?.ai_api_key_masked && (
                   <span className="text-[10px] text-gray-500 font-mono">
                     บันทึกแล้ว: {settings.ai_api_key_masked}
@@ -289,6 +401,10 @@ export default function SettingsPanel() {
                 placeholder={
                   activeAi === 'gemini'
                     ? 'AQ.Ab8RN6K9... (Gemini Key)'
+                    : activeAi === 'groq'
+                    ? 'gsk_... (Groq Key)'
+                    : activeAi === 'ollama'
+                    ? 'ollama (เครื่องตนเองไม่ต้องใส่)'
                     : 'sk-proj-... (OpenAI Key)'
                 }
               />
@@ -302,7 +418,15 @@ export default function SettingsPanel() {
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
                 className="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-xs text-gray-100 font-mono focus:outline-none focus:border-blue-500"
-                placeholder={activeAi === 'gemini' ? 'gemini-2.5-flash' : 'gpt-4o-mini'}
+                placeholder={
+                  activeAi === 'gemini'
+                    ? 'gemini-2.5-flash'
+                    : activeAi === 'groq'
+                    ? 'llama-3.3-70b-versatile'
+                    : activeAi === 'ollama'
+                    ? 'qwen2.5-coder:7b'
+                    : 'gpt-4o-mini'
+                }
               />
             </div>
 
@@ -318,10 +442,10 @@ export default function SettingsPanel() {
             </div>
           </div>
 
-          {/* Builder Integration Section */}
+          {/* Section 4: Builder Integration Section */}
           <div className="border-t border-gray-800 pt-4 space-y-2.5">
             <h3 className="text-xs font-semibold text-gray-300 uppercase tracking-wide flex items-center justify-between">
-              <span>Builder Agent (ตัวเขียนโค้ด)</span>
+              <span>Builder Agent (ตัวเขียนโค้ดอัตโนมัติ)</span>
               <span className="text-[10px] text-emerald-400 font-mono font-medium">Antigravity</span>
             </h3>
 

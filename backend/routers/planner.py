@@ -220,6 +220,17 @@ async def chat(
         else:
             effective_mode = PlanningMode.STANDARD
 
+    # Ensure complexity score is initialized if missing
+    if project.complexity_score <= 0.0:
+        initial_complexity_map = {
+            PlanningMode.QUICK: 15.0,
+            PlanningMode.STANDARD: 30.0,
+            PlanningMode.DETAILED: 50.0,
+            PlanningMode.DEEP: 70.0,
+            PlanningMode.ARCHITECT: 90.0,
+        }
+        project.complexity_score = initial_complexity_map.get(effective_mode, 25.0)
+
     if not payload.stream:
         # Non-streaming JSON response for standard REST / frontend client
         try:

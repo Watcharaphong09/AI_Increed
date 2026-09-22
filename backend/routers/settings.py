@@ -35,6 +35,8 @@ _ROOT_ENV_PATH = Path(__file__).parent.parent.parent / ".env"
 
 class SettingsOut(BaseModel):
     """Settings response with masked API keys."""
+    workspace_dir: str = ""
+
     # Global
     ai_provider: str
     ai_base_url: str
@@ -59,6 +61,8 @@ class SettingsOut(BaseModel):
 
 class SettingsUpdate(BaseModel):
     """Partial settings update. Omit fields to keep existing values."""
+    workspace_dir: Optional[str] = None
+
     # Global
     ai_provider: Optional[str] = None
     ai_base_url: Optional[str] = None
@@ -143,6 +147,7 @@ async def get_settings():
     API keys are always masked — only first/last 4 chars are shown.
     """
     return SettingsOut(
+        workspace_dir=str(settings.WORKSPACE_DIR),
         ai_provider=settings.AI_PROVIDER,
         ai_base_url=settings.AI_BASE_URL,
         ai_api_key_masked=_mask_key(settings.AI_API_KEY),
@@ -171,6 +176,7 @@ async def update_settings(payload: SettingsUpdate):
 
     # Map payload fields → env key names (uppercase)
     field_to_env: dict[str, str] = {
+        "workspace_dir": "WORKSPACE_DIR",
         "ai_provider": "AI_PROVIDER",
         "ai_base_url": "AI_BASE_URL",
         "ai_api_key": "AI_API_KEY",

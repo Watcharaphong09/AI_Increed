@@ -263,7 +263,8 @@ class ContextService:
         instruction_text = (
             f"Implement TASK-{task.task_number:03d}: {task.title}\n"
             f"Read: tasks/TASK-{task.task_number:03d}.md and .handoff/TASK-{task.task_number:03d}/manifest.json\n"
-            f"Do not modify unrelated features."
+            f"Do not modify unrelated features.\n"
+            f"Verification: verify using terminal build/tests. Do NOT spam browser screenshots in loops."
         )
 
         budget_limit = 3500

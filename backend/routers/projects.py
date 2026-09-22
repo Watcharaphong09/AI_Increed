@@ -152,17 +152,26 @@ async def create_project(
     payload: ProjectCreate,
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a new project."""
+    initial_complexity_map = {
+        PlanningMode.QUICK: 15.0,
+        PlanningMode.STANDARD: 30.0,
+        PlanningMode.DETAILED: 50.0,
+        PlanningMode.DEEP: 70.0,
+        PlanningMode.ARCHITECT: 90.0,
+    }
+    initial_score = initial_complexity_map.get(payload.planning_mode, 0.0)
+
     project = Project(
         name=payload.name,
         description=payload.description,
         planning_mode=payload.planning_mode,
+        complexity_score=initial_score,
         status=ProjectStatus.PLANNING,
     )
     db.add(project)
     await db.flush()
     await db.refresh(project)
-    logger.info("Created project %s (%r)", project.id, project.name)
+    logger.info("Created project %s (%r) with mode %s (score: %.1f)", project.id, project.name, project.planning_mode.value, project.complexity_score)
     return project
 
 
