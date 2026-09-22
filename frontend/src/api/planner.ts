@@ -36,7 +36,21 @@ export async function estimateComplexity(
 }
 
 /**
- * Get requirements for a project
+ * Create a new requirement
+ */
+export async function createRequirement(
+  projectId: string,
+  data: { category?: string; content: string; status?: string; priority?: string; notes?: string }
+): Promise<Requirement> {
+  const response = await apiClient.post<Requirement>(
+    `/projects/${projectId}/requirements`,
+    data
+  )
+  return response.data
+}
+
+/**
+ * Get all requirements for a project
  */
 export async function getRequirements(projectId: string): Promise<Requirement[]> {
   const response = await apiClient.get<Requirement[]>(

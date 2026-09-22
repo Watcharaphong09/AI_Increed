@@ -3,10 +3,11 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Send, AlertTriangle, Lightbulb, WifiOff } from 'lucide-react'
 import clsx from 'clsx'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAppStore } from '../store/appStore'
-import { sendMessage, getMessages } from '../api/planner'
+import { sendMessage, getMessages, createRequirement } from '../api/planner'
 import type { Message, Question, QuestionPriority } from '../types'
+import { Check, Plus } from 'lucide-react'
 
 // GODKILLER-ZERO Loop Breaker: ถ้า loading นานเกิน 45 วินาที auto-reset
 const CHAT_TIMEOUT_MS = 45_000
@@ -56,54 +57,271 @@ function priorityLabel(priority: QuestionPriority): string {
   }
 }
 
-interface QuestionCardProps {
-  question: Question
-  onClick: (text: string) => void
+/**
+ * Suggested Requirements with Two-Step Confirmation
+ */
+interface SuggestedRequirementsProps {
+  projectId: string
+  suggestions: string[]
 }
 
-function QuestionCard({ question, onClick }: QuestionCardProps) {
+function SuggestedRequirementsList({
+  projectId,
+  suggestions,
+}: SuggestedRequirementsProps) {
+  const [confirmingIndex, setConfirmingIndex] = useState<number | null>(null)
+  const [addedSet, setAddedSet] = useState<Set<number>>(new Set())
+  const [isAdding, setIsAdding] = useState(false)
+  const { showToast } = useAppStore()
+  const queryClient = useQueryClient()
+
+  const handleConfirm = async (text: string, index: number) => {
+    if (!projectId) return
+    setIsAdding(true)
+    try {
+      await createRequirement(projectId, {
+        content: text,
+        category: 'Feature',
+        status: 'CONFIRMED',
+        priority: 'IMPORTANT',
+      })
+      queryClient.invalidateQueries({ queryKey: ['requirements', projectId] })
+      setAddedSet((prev) => new Set(prev).add(index))
+      setConfirmingIndex(null)
+      showToast(`เพิ่ม Requirement: "${text.slice(0, 35)}..." แล้ว!`, 'success')
+    } catch (err: any) {
+      showToast(err.message || 'ไม่สามารถเพิ่ม Requirement ได้', 'error')
+    } finally {
+      setIsAdding(false)
+    }
+  }
+
   return (
-    <button
-      onClick={() => onClick(question.text)}
-      className={clsx(
-        'w-full text-left px-3 py-2.5 rounded-lg border text-xs transition-all hover:opacity-80',
-        questionBorderClass(question.priority)
-      )}
-    >
-      <div className="flex items-start gap-2">
-        <span
-          className={clsx(
-            'shrink-0 mt-0.5 px-1.5 py-0.5 rounded text-xs font-medium',
-            questionLabelClass(question.priority)
-          )}
-        >
-          {priorityLabel(question.priority)}
+    <div className="w-full rounded-xl border border-purple-500/40 bg-purple-950/20 p-3 space-y-2.5">
+      <div className="flex items-center gap-2">
+        <Lightbulb className="w-4 h-4 text-purple-400 shrink-0" />
+        <span className="text-xs font-semibold text-purple-300">
+          ระบบแนะนำ Requirement ที่อาจลืม:
         </span>
-        <span className="text-gray-200 leading-relaxed">{question.text}</span>
       </div>
-      {question.category && (
-        <p className="text-gray-500 mt-1 text-xs pl-14">หมวด: {question.category}</p>
-      )}
-    </button>
+
+      <ul className="space-y-2">
+        {suggestions.map((s, i) => {
+          const isConfirming = confirmingIndex === i
+          const isAdded = addedSet.has(i)
+
+          if (isAdded) {
+            return (
+              <li
+                key={i}
+                className="flex items-center gap-2 text-xs text-emerald-300 bg-emerald-950/40 border border-emerald-800/50 rounded-lg px-2.5 py-1.5"
+              >
+                <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span className="line-through opacity-80">{s}</span>
+                <span className="ml-auto text-[10px] font-bold uppercase tracking-wider bg-emerald-900/80 text-emerald-200 px-1.5 py-0.5 rounded border border-emerald-700/60">
+                  เพิ่มแล้ว
+                </span>
+              </li>
+            )
+          }
+
+          if (isConfirming) {
+            return (
+              <li
+                key={i}
+                className="p-2.5 rounded-lg bg-purple-900/40 border border-purple-500/60 space-y-2 animate-fadeIn"
+              >
+                <p className="text-xs text-purple-200 font-medium">
+                  ยืนยันต้องการเพิ่ม Requirement นี้ใช่ไหม?
+                </p>
+                <p className="text-xs text-gray-300 italic pl-2 border-l-2 border-purple-400">
+                  "{s}"
+                </p>
+                <div className="flex items-center justify-end gap-2 pt-1">
+                  <button
+                    disabled={isAdding}
+                    onClick={() => handleConfirm(s, i)}
+                    className="px-2.5 py-1 text-xs bg-emerald-600 hover:bg-emerald-500 text-white rounded-md font-medium transition-colors flex items-center gap-1 shadow-sm disabled:opacity-50"
+                  >
+                    <Check className="w-3 h-3" />
+                    ยืนยันเพิ่ม
+                  </button>
+                  <button
+                    disabled={isAdding}
+                    onClick={() => setConfirmingIndex(null)}
+                    className="px-2.5 py-1 text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-md transition-colors"
+                  >
+                    ยกเลิก
+                  </button>
+                </div>
+              </li>
+            )
+          }
+
+          return (
+            <li
+              key={i}
+              className="flex items-start justify-between gap-2.5 p-2 rounded-lg bg-gray-900/60 border border-purple-900/40 hover:border-purple-700/60 transition-all group"
+            >
+              <span className="text-xs text-purple-200 leading-relaxed pt-0.5">
+                • {s}
+              </span>
+              <button
+                type="button"
+                onClick={() => setConfirmingIndex(i)}
+                title="คลิกเพื่อเพิ่ม Requirement นี้"
+                className="shrink-0 text-xs px-2.5 py-1 rounded-md border border-purple-500/50 bg-purple-900/40 hover:bg-purple-800 text-purple-200 hover:text-white transition-all flex items-center gap-1 shadow-sm font-medium"
+              >
+                <Plus className="w-3.5 h-3.5 text-purple-300" />
+                <span>เพิ่ม</span>
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
+/**
+ * Interactive Form for Questions (Batch Submit)
+ */
+interface QuestionsInteractiveFormProps {
+  questions: Question[]
+  onSubmitAnswers: (combinedText: string) => void
+  isSubmitting?: boolean
+}
+
+function QuestionsInteractiveForm({
+  questions,
+  onSubmitAnswers,
+  isSubmitting = false,
+}: QuestionsInteractiveFormProps) {
+  const [answers, setAnswers] = useState<Record<number, string>>({})
+  const [submitted, setSubmitted] = useState(false)
+
+  const answeredCount = Object.values(answers).filter((a) => a.trim().length > 0).length
+
+  const handleSubmit = (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
+    if (answeredCount === 0 || isSubmitting) return
+
+    const lines: string[] = ['[คำตอบสำหรับข้อซักถามจาก Planner]']
+    questions.forEach((q, i) => {
+      const ans = answers[i]?.trim()
+      if (ans) {
+        lines.push(`${i + 1}. ${q.text}`)
+        lines.push(`👉 ${ans}\n`)
+      }
+    })
+
+    onSubmitAnswers(lines.join('\n'))
+    setSubmitted(true)
+  }
+
+  if (submitted) {
+    return (
+      <div className="w-full rounded-xl border border-blue-900/60 bg-blue-950/20 p-3 text-xs text-blue-300 flex items-center gap-2">
+        <Check className="w-4 h-4 text-blue-400 shrink-0" />
+        <span>ส่งคำตอบทั้งหมดเรียบร้อยแล้ว</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="w-full space-y-2.5">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-gray-400 font-semibold flex items-center gap-1.5">
+          <span>คำถามจาก Planner:</span>
+          <span className="text-[11px] text-gray-500 font-normal">
+            (พิมพ์ตอบในการ์ดแล้วกดส่งพร้อมกันได้เลย)
+          </span>
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        {questions.map((q, i) => (
+          <div
+            key={i}
+            className={clsx(
+              'w-full px-3.5 py-2.5 rounded-xl border text-xs transition-all space-y-1.5',
+              questionBorderClass(q.priority)
+            )}
+          >
+            <div className="flex items-start gap-2">
+              <span
+                className={clsx(
+                  'shrink-0 px-1.5 py-0.5 rounded text-[11px] font-medium',
+                  questionLabelClass(q.priority)
+                )}
+              >
+                {priorityLabel(q.priority)}
+              </span>
+              <span className="text-gray-200 font-medium leading-relaxed">
+                {q.text}
+              </span>
+            </div>
+            {q.category && (
+              <p className="text-gray-500 text-[11px] pl-14">
+                หมวด: {q.category}
+              </p>
+            )}
+            <input
+              type="text"
+              value={answers[i] || ''}
+              onChange={(e) =>
+                setAnswers((prev) => ({ ...prev, [i]: e.target.value }))
+              }
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  handleSubmit()
+                }
+              }}
+              placeholder="พิมพ์คำตอบข้อนี้... (เว้นว่างได้ถ้ายังไม่ต้องการตอบ)"
+              className="w-full bg-gray-950/80 border border-gray-700/80 rounded-lg px-3 py-1.5 text-xs text-gray-100 focus:outline-none focus:border-blue-500 placeholder-gray-600 transition-colors"
+            />
+          </div>
+        ))}
+      </div>
+
+      {/* Batch Submit Bar */}
+      <div className="flex items-center justify-between pt-1 px-1">
+        <span className="text-[11px] text-gray-400">
+          กรอกแล้ว {answeredCount}/{questions.length} ข้อ
+        </span>
+        <button
+          type="button"
+          disabled={answeredCount === 0 || isSubmitting}
+          onClick={() => handleSubmit()}
+          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-md shadow-blue-950/40"
+        >
+          <Send className="w-3.5 h-3.5" />
+          <span>ส่งคำตอบทั้งหมดพร้อมกัน</span>
+        </button>
+      </div>
+    </div>
   )
 }
 
 interface MessageBubbleProps {
   message: Message
+  projectId?: string
   questions?: Question[]
   suggestions?: string[]
   conflicts?: string[]
-  onQuestionClick: (text: string) => void
-  onSuggestionClick: (text: string) => void
+  onSubmitBatchAnswers: (combinedText: string) => void
+  isChatLoading?: boolean
 }
 
 function MessageBubble({
   message,
+  projectId = '',
   questions = [],
   suggestions = [],
   conflicts = [],
-  onQuestionClick,
-  onSuggestionClick,
+  onSubmitBatchAnswers,
+  isChatLoading = false,
 }: MessageBubbleProps) {
   const isUser = message.role === 'user'
 
@@ -155,41 +373,18 @@ function MessageBubble({
           </div>
         )}
 
-        {/* Suggestions */}
+        {/* Suggestions with Confirmation */}
         {!isUser && suggestions.length > 0 && (
-          <div className="w-full rounded-lg border border-purple-500/40 bg-purple-950/20 px-3 py-2.5">
-            <div className="flex items-center gap-2 mb-2">
-              <Lightbulb className="w-4 h-4 text-purple-400 shrink-0" />
-              <span className="text-xs font-medium text-purple-400">
-                ระบบแนะนำ Requirement ที่อาจลืม:
-              </span>
-            </div>
-            <ul className="space-y-1.5">
-              {suggestions.map((s, i) => (
-                <li key={i}>
-                  <button
-                    onClick={() => onSuggestionClick(s)}
-                    className="w-full text-left text-xs text-purple-200 hover:text-purple-100 leading-relaxed transition-colors flex items-start gap-2"
-                  >
-                    <span className="shrink-0 mt-0.5 w-4 h-4 rounded border border-purple-500/50 flex items-center justify-center text-purple-400">
-                      +
-                    </span>
-                    {s}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
+          <SuggestedRequirementsList projectId={projectId} suggestions={suggestions} />
         )}
 
-        {/* Questions */}
+        {/* Questions Interactive Form */}
         {!isUser && questions.length > 0 && (
-          <div className="w-full space-y-2">
-            <p className="text-xs text-gray-500 font-medium">คำถามจาก Planner:</p>
-            {questions.map((q, i) => (
-              <QuestionCard key={i} question={q} onClick={onQuestionClick} />
-            ))}
-          </div>
+          <QuestionsInteractiveForm
+            questions={questions}
+            onSubmitAnswers={onSubmitBatchAnswers}
+            isSubmitting={isChatLoading}
+          />
         )}
       </div>
     </div>
@@ -333,15 +528,20 @@ export default function ChatPanel() {
     }
   }
 
-  const handleQuestionClick = (text: string) => {
-    setInput(text)
-    textareaRef.current?.focus()
-  }
+  const handleBatchAnswersSubmit = (combinedText: string) => {
+    if (!currentProject || !combinedText.trim() || isChatLoading) return
 
-  const handleSuggestionClick = (text: string) => {
-    const prefixed = `เพิ่ม requirement: ${text}`
-    setInput(prefixed)
-    textareaRef.current?.focus()
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: combinedText.trim(),
+      created_at: new Date().toISOString(),
+    }
+    addMessage(userMessage)
+    setIsChatLoading(true)
+    startLoadingTimeout()
+
+    sendMutation.mutate({ projectId: currentProject.id, message: userMessage.content })
   }
 
   if (!currentProject) {
@@ -409,11 +609,12 @@ export default function ChatPanel() {
             <MessageBubble
               key={msg.id}
               message={msg}
+              projectId={currentProject?.id}
               questions={meta?.questions ?? []}
               suggestions={meta?.suggestions ?? []}
               conflicts={meta?.conflicts ?? []}
-              onQuestionClick={handleQuestionClick}
-              onSuggestionClick={handleSuggestionClick}
+              onSubmitBatchAnswers={handleBatchAnswersSubmit}
+              isChatLoading={isChatLoading}
             />
           )
         })}

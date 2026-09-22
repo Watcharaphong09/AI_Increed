@@ -66,6 +66,14 @@ class RequirementUpdate(BaseModel):
     notes: Optional[str] = None
 
 
+class RequirementCreate(BaseModel):
+    category: str = "Feature"
+    content: str
+    status: RequirementStatus = RequirementStatus.CONFIRMED
+    priority: RequirementPriority = RequirementPriority.IMPORTANT
+    notes: Optional[str] = ""
+
+
 class RequirementOut(BaseModel):
     id: str
     project_id: str
@@ -479,6 +487,37 @@ async def list_requirements(
         select(Requirement).where(Requirement.project_id == project_id)
     )
     return result.scalars().all()
+
+
+@router.post(
+    "/{project_id}/requirements",
+    response_model=RequirementOut,
+    status_code=status.HTTP_201_CREATED,
+)
+@projects_alias_router.post(
+    "/{project_id}/requirements",
+    response_model=RequirementOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_requirement(
+    project_id: str,
+    payload: RequirementCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Add a new requirement directly to the project."""
+    await _require_project(project_id, db)
+    req = Requirement(
+        project_id=project_id,
+        category=payload.category,
+        content=payload.content,
+        status=payload.status,
+        priority=payload.priority,
+        notes=payload.notes or "",
+    )
+    db.add(req)
+    await db.commit()
+    await db.refresh(req)
+    return req
 
 
 @router.put(
