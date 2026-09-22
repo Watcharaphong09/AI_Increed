@@ -13,6 +13,7 @@ import SettingsPanel from '../components/SettingsPanel'
 import HandoffModal from '../components/HandoffModal'
 import BuildResultModal from '../components/BuildResultModal'
 import PlanEditModal from '../components/PlanEditModal'
+import { ErrorBoundary } from '../components/ErrorBoundary'
 
 function ToastNotification() {
   const { toast, clearToast } = useAppStore()
@@ -85,17 +86,21 @@ export default function ProjectPage() {
         <main className="flex-1 flex flex-col min-h-0 min-w-0">
           {activeMainTab === 'chat' ? (
             <>
-              <ChatPanel />
+              <ErrorBoundary fallbackTitle="เกิดข้อผิดพลาดในการโหลดหน้าต่างสนทนา">
+                <ChatPanel />
+              </ErrorBoundary>
               <StatusBar />
               <RequirementPanel />
               <ApprovalPanel />
             </>
           ) : (
             <>
-              <TasksPanel
-                onSelectTask={setSelectedTaskForHandoff}
-                onOpenResultModal={setSelectedTaskForResult}
-              />
+              <ErrorBoundary fallbackTitle="เกิดข้อผิดพลาดในการโหลดหน้าต่าง Tasks">
+                <TasksPanel
+                  onSelectTask={setSelectedTaskForHandoff}
+                  onOpenResultModal={setSelectedTaskForResult}
+                />
+              </ErrorBoundary>
               <StatusBar />
               <ApprovalPanel />
             </>

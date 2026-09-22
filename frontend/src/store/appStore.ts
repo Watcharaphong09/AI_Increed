@@ -1,12 +1,8 @@
 import { create } from 'zustand'
-import type { Project, Message, Requirement, Task, Question } from '../types'
+import type { Project, Message, Requirement, Task } from '../types'
+import { normalizeMessageMeta, type MessageMeta } from '../utils/normalizeMeta'
 
-// MessageMeta stores per-message planner metadata (questions/suggestions/conflicts)
-export interface MessageMeta {
-  questions: Question[]
-  suggestions: string[]
-  conflicts: string[]
-}
+export type { MessageMeta }
 
 // SessionStorage key for messageMeta persistence
 const MESSAGE_META_KEY = 'ai_increed_message_meta'
@@ -14,7 +10,13 @@ const MESSAGE_META_KEY = 'ai_increed_message_meta'
 function loadMessageMeta(): Record<string, MessageMeta> {
   try {
     const raw = sessionStorage.getItem(MESSAGE_META_KEY)
-    return raw ? JSON.parse(raw) : {}
+    if (!raw) return {}
+    const parsed = JSON.parse(raw)
+    const normalized: Record<string, MessageMeta> = {}
+    for (const [key, val] of Object.entries(parsed)) {
+      normalized[key] = normalizeMessageMeta(val)
+    }
+    return normalized
   } catch {
     return {}
   }
@@ -118,7 +120,8 @@ export const useAppStore = create<AppStore>((set) => ({
   messageMeta: loadMessageMeta(),
   mergeMessageMeta: (messageId, meta) =>
     set((state) => {
-      const updated = { ...state.messageMeta, [messageId]: meta }
+      const normalized = normalizeMessageMeta(meta)
+      const updated = { ...state.messageMeta, [messageId]: normalized }
       saveMessageMeta(updated)
       return { messageMeta: updated }
     }),

@@ -8,6 +8,7 @@ import { useAppStore } from '../store/appStore'
 import { sendMessage, getMessages, createRequirement } from '../api/planner'
 import type { Message, Question, QuestionPriority } from '../types'
 import { Check, Plus } from 'lucide-react'
+import { normalizeMessageMeta } from '../utils/normalizeMeta'
 
 // GODKILLER-ZERO Loop Breaker: ถ้า loading นานเกิน 45 วินาที auto-reset
 const CHAT_TIMEOUT_MS = 45_000
@@ -106,7 +107,10 @@ function SuggestedRequirementsList({
       </div>
 
       <ul className="space-y-2">
-        {suggestions.map((s, i) => {
+        {suggestions.map((rawS, i) => {
+          const s = typeof rawS === 'string'
+            ? rawS
+            : ((rawS as any)?.content || (rawS as any)?.text || JSON.stringify(rawS))
           const isConfirming = confirmingIndex === i
           const isAdded = addedSet.has(i)
 
@@ -207,10 +211,11 @@ function QuestionsInteractiveForm({
     if (answeredCount === 0 || isSubmitting) return
 
     const lines: string[] = ['[คำตอบสำหรับข้อซักถามจาก Planner]']
-    questions.forEach((q, i) => {
+    questions.forEach((rawQ, i) => {
+      const qText = typeof rawQ === 'string' ? rawQ : (rawQ?.text || (rawQ as any)?.question || `คำถามข้อที่ ${i + 1}`)
       const ans = answers[i]?.trim()
       if (ans) {
-        lines.push(`${i + 1}. ${q.text}`)
+        lines.push(`${i + 1}. ${qText}`)
         lines.push(`👉 ${ans}\n`)
       }
     })
@@ -240,49 +245,54 @@ function QuestionsInteractiveForm({
       </div>
 
       <div className="space-y-2">
-        {questions.map((q, i) => (
-          <div
-            key={i}
-            className={clsx(
-              'w-full px-3.5 py-2.5 rounded-xl border text-xs transition-all space-y-1.5',
-              questionBorderClass(q.priority)
-            )}
-          >
-            <div className="flex items-start gap-2">
-              <span
-                className={clsx(
-                  'shrink-0 px-1.5 py-0.5 rounded text-[11px] font-medium',
-                  questionLabelClass(q.priority)
-                )}
-              >
-                {priorityLabel(q.priority)}
-              </span>
-              <span className="text-gray-200 font-medium leading-relaxed">
-                {q.text}
-              </span>
-            </div>
-            {q.category && (
-              <p className="text-gray-500 text-[11px] pl-14">
-                หมวด: {q.category}
-              </p>
-            )}
-            <input
-              type="text"
-              value={answers[i] || ''}
-              onChange={(e) =>
-                setAnswers((prev) => ({ ...prev, [i]: e.target.value }))
-              }
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault()
-                  handleSubmit()
+        {questions.map((rawQ, i) => {
+          const qText = typeof rawQ === 'string' ? rawQ : (rawQ?.text || (rawQ as any)?.question || '')
+          const qPriority: QuestionPriority = (typeof rawQ === 'object' && rawQ?.priority) || 'IMPORTANT'
+          const qCategory = typeof rawQ === 'object' ? rawQ?.category : ''
+          return (
+            <div
+              key={i}
+              className={clsx(
+                'w-full px-3.5 py-2.5 rounded-xl border text-xs transition-all space-y-1.5',
+                questionBorderClass(qPriority)
+              )}
+            >
+              <div className="flex items-start gap-2">
+                <span
+                  className={clsx(
+                    'shrink-0 px-1.5 py-0.5 rounded text-[11px] font-medium',
+                    questionLabelClass(qPriority)
+                  )}
+                >
+                  {priorityLabel(qPriority)}
+                </span>
+                <span className="text-gray-200 font-medium leading-relaxed">
+                  {qText}
+                </span>
+              </div>
+              {qCategory && (
+                <p className="text-gray-500 text-[11px] pl-14">
+                  หมวด: {qCategory}
+                </p>
+              )}
+              <input
+                type="text"
+                value={answers[i] || ''}
+                onChange={(e) =>
+                  setAnswers((prev) => ({ ...prev, [i]: e.target.value }))
                 }
-              }}
-              placeholder="พิมพ์คำตอบข้อนี้... (เว้นว่างได้ถ้ายังไม่ต้องการตอบ)"
-              className="w-full bg-gray-950/80 border border-gray-700/80 rounded-lg px-3 py-1.5 text-xs text-gray-100 focus:outline-none focus:border-blue-500 placeholder-gray-600 transition-colors"
-            />
-          </div>
-        ))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    handleSubmit()
+                  }
+                }}
+                placeholder="พิมพ์คำตอบข้อนี้... (เว้นว่างได้ถ้ายังไม่ต้องการตอบ)"
+                className="w-full bg-gray-950/80 border border-gray-700/80 rounded-lg px-3 py-1.5 text-xs text-gray-100 focus:outline-none focus:border-blue-500 placeholder-gray-600 transition-colors"
+              />
+            </div>
+          )
+        })}
       </div>
 
       {/* Batch Submit Bar */}
@@ -364,11 +374,14 @@ function MessageBubble({
               <span className="text-xs font-medium text-orange-400">ข้อขัดแย้งที่พบ</span>
             </div>
             <ul className="space-y-1">
-              {conflicts.map((c, i) => (
-                <li key={i} className="text-xs text-orange-200 leading-relaxed">
-                  • {c}
-                </li>
-              ))}
+              {conflicts.map((rawC, i) => {
+                const c = typeof rawC === 'string' ? rawC : ((rawC as any)?.description || JSON.stringify(rawC))
+                return (
+                  <li key={i} className="text-xs text-orange-200 leading-relaxed">
+                    • {c}
+                  </li>
+                )
+              })}
             </ul>
           </div>
         )}
@@ -425,11 +438,7 @@ export default function ChatPanel() {
         if (m.metadata_json) {
           try {
             const parsed = JSON.parse(m.metadata_json)
-            mergeMessageMeta(m.id, {
-              questions: parsed.questions || [],
-              suggestions: parsed.suggestions || [],
-              conflicts: parsed.conflicts || [],
-            })
+            mergeMessageMeta(m.id, normalizeMessageMeta(parsed))
           } catch {
             // ignore JSON parse error
           }
@@ -478,21 +487,15 @@ export default function ChatPanel() {
       }
       addMessage(plannerMessage)
 
-      // Normalize questions — backend returns {text, priority, category} objects
-      const questions = (response.questions ?? []).map((q: any) =>
-        typeof q === 'string' ? { text: q, priority: 'IMPORTANT', category: '' } : q
-      )
-      // Normalize suggestions — backend returns {content, ...} objects, extract string
-      const suggestions = (response.suggestions ?? []).map((s: any) =>
-        typeof s === 'string' ? s : (s.content ?? '')
-      )
-      // Normalize conflicts — extract description string
-      const conflicts = (response.conflicts ?? []).map((c: any) =>
-        typeof c === 'string' ? c : (c.description ?? `${c.requirement_a} vs ${c.requirement_b}`)
-      )
+      // Normalize questions/suggestions/conflicts safely
+      const safeMeta = normalizeMessageMeta({
+        questions: response.questions,
+        suggestions: response.suggestions,
+        conflicts: response.conflicts,
+      })
 
       // Persist to Zustand + sessionStorage (fixes questions-disappear-on-refresh bug)
-      mergeMessageMeta(plannerMessage.id, { questions, suggestions, conflicts })
+      mergeMessageMeta(plannerMessage.id, safeMeta)
 
       setIsReadyToBuild(response.is_ready_to_build ?? false)
       setIsChatLoading(false)
@@ -595,24 +598,20 @@ export default function ChatPanel() {
           let meta = messageMeta[msg.id]
           if (!meta && msg.metadata_json) {
             try {
-              const parsed = JSON.parse(msg.metadata_json)
-              meta = {
-                questions: parsed.questions || [],
-                suggestions: parsed.suggestions || [],
-                conflicts: parsed.conflicts || [],
-              }
+              meta = normalizeMessageMeta(JSON.parse(msg.metadata_json))
             } catch {
               // ignore
             }
           }
+          const safeMeta = normalizeMessageMeta(meta)
           return (
             <MessageBubble
               key={msg.id}
               message={msg}
               projectId={currentProject?.id}
-              questions={meta?.questions ?? []}
-              suggestions={meta?.suggestions ?? []}
-              conflicts={meta?.conflicts ?? []}
+              questions={safeMeta.questions}
+              suggestions={safeMeta.suggestions}
+              conflicts={safeMeta.conflicts}
               onSubmitBatchAnswers={handleBatchAnswersSubmit}
               isChatLoading={isChatLoading}
             />
