@@ -268,9 +268,42 @@ Timestamp: {now_str}
         await db.commit()
         return task
 
-    async def get_workspace_path(self, project_id: str) -> Path:
-        """Return (and create) the workspace directory for a project."""
-        workspace = settings.get_workspace_path() / project_id
+    async def get_workspace_path(self, project_id: str, db: Optional[AsyncSession] = None) -> Path:
+        """Return (and create) the workspace directory for a project under WORKSPACE_DIR."""
+        import re
+        base_dir = settings.get_workspace_path()
+        base_dir.mkdir(parents=True, exist_ok=True)
+
+        folder_name = project_id
+
+        # Try to resolve friendly project name for clean directory naming
+        project = None
+        if db:
+            project = await db.get(Project, project_id)
+        else:
+            try:
+                from backend.database import AsyncSessionLocal
+                async with AsyncSessionLocal() as session:
+                    project = await session.get(Project, project_id)
+            except Exception:
+                pass
+
+        if project and project.name:
+            # Clean name for filesystem safety
+            safe_name = re.sub(r'[\\/*?:"<>|]+', '_', project.name).strip()
+            if safe_name:
+                folder_name = safe_name
+
+        workspace = base_dir / folder_name
+
+        # Safeguard: never use the orchestrator repository itself as project workspace
+        try:
+            increed_root = Path(__file__).resolve().parents[2]
+            if workspace.resolve() == increed_root.resolve():
+                workspace = base_dir / f"{folder_name}_workspace"
+        except Exception:
+            pass
+
         workspace.mkdir(parents=True, exist_ok=True)
         return workspace
 

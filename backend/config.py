@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite+aiosqlite:///./ai_increed.db"
 
     # ── Workspace ─────────────────────────────────────────────────────────────
-    WORKSPACE_DIR: str = "../workspace"
+    WORKSPACE_DIR: str = r"C:\Users\Watcharaphong\Desktop\__Dev Projects__"
 
     # ── CORS ──────────────────────────────────────────────────────────────────
     CORS_ORIGINS: List[str] = Field(

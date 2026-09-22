@@ -166,7 +166,9 @@ class ContextService:
 
         Returns relative paths as strings.
         """
-        workspace = settings.get_workspace_path() / project_id
+        from backend.services.markdown_service import MarkdownService
+        markdown_svc = MarkdownService()
+        workspace = await markdown_svc.get_workspace_path(project_id, db)
         if not workspace.exists():
             return []
 
