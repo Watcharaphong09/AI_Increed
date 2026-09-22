@@ -37,8 +37,8 @@ export default function Header() {
 
   const isGemini =
     !aiSettings ||
-    aiSettings.base_url?.includes('googleapis') ||
-    aiSettings.model?.toLowerCase().includes('gemini')
+    (aiSettings.planner_base_url || aiSettings.ai_base_url || aiSettings.base_url || '').includes('googleapis') ||
+    (aiSettings.planner_model || aiSettings.ai_model || aiSettings.model || '').toLowerCase().includes('gemini')
 
   return (
     <header className="h-12 bg-gray-900 border-b border-gray-800 flex items-center justify-between px-4 shrink-0 z-10">

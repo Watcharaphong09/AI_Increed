@@ -83,6 +83,7 @@ class MessageOut(BaseModel):
     project_id: str
     role: str
     content: str
+    metadata_json: Optional[str] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -210,11 +211,43 @@ async def chat(
                 db=db,
             )
 
+            questions_data = [
+                {
+                    "text": q.text,
+                    "priority": q.priority,
+                    "category": q.category,
+                }
+                for q in parsed.questions
+            ]
+            suggestions_data = [
+                {
+                    "content": s.content,
+                    "category": s.category,
+                    "reason": s.reason,
+                }
+                for s in parsed.suggestions
+            ]
+            conflicts_data = [
+                {
+                    "requirement_a": c.requirement_a,
+                    "requirement_b": c.requirement_b,
+                    "description": c.description,
+                    "suggestion": c.suggestion,
+                }
+                for c in parsed.conflicts
+            ]
+            meta_json = json.dumps({
+                "questions": questions_data,
+                "suggestions": suggestions_data,
+                "conflicts": conflicts_data,
+            }, ensure_ascii=False)
+
             async with db.begin_nested():
                 planner_msg = Message(
                     project_id=project_id,
                     role=MessageRole.PLANNER,
                     content=parsed.message,
+                    metadata_json=meta_json,
                 )
                 db.add(planner_msg)
 
@@ -234,34 +267,14 @@ async def chat(
                     db.add(new_req)
 
             await db.commit()
+            await db.refresh(planner_msg)
 
             return {
+                "id": planner_msg.id,
                 "message": parsed.message,
-                "questions": [
-                    {
-                        "text": q.text,
-                        "priority": q.priority,
-                        "category": q.category,
-                    }
-                    for q in parsed.questions
-                ],
-                "suggestions": [
-                    {
-                        "content": s.content,
-                        "category": s.category,
-                        "reason": s.reason,
-                    }
-                    for s in parsed.suggestions
-                ],
-                "conflicts": [
-                    {
-                        "requirement_a": c.requirement_a,
-                        "requirement_b": c.requirement_b,
-                        "description": c.description,
-                        "suggestion": c.suggestion,
-                    }
-                    for c in parsed.conflicts
-                ],
+                "questions": questions_data,
+                "suggestions": suggestions_data,
+                "conflicts": conflicts_data,
                 "is_ready_to_build": parsed.is_ready_to_build,
                 "requirements_count": len(parsed.requirements_update),
             }
@@ -288,12 +301,44 @@ async def chat(
             # Parse the full response
             parsed = planner_service._parse_planner_response(full_response)
 
+            questions_data = [
+                {
+                    "text": q.text,
+                    "priority": q.priority,
+                    "category": q.category,
+                }
+                for q in parsed.questions
+            ]
+            suggestions_data = [
+                {
+                    "content": s.content,
+                    "category": s.category,
+                    "reason": s.reason,
+                }
+                for s in parsed.suggestions
+            ]
+            conflicts_data = [
+                {
+                    "requirement_a": c.requirement_a,
+                    "requirement_b": c.requirement_b,
+                    "description": c.description,
+                    "suggestion": c.suggestion,
+                }
+                for c in parsed.conflicts
+            ]
+            meta_json = json.dumps({
+                "questions": questions_data,
+                "suggestions": suggestions_data,
+                "conflicts": conflicts_data,
+            }, ensure_ascii=False)
+
             # Save planner response message
             async with db.begin_nested():
                 planner_msg = Message(
                     project_id=project_id,
                     role=MessageRole.PLANNER,
                     content=parsed.message or full_response,
+                    metadata_json=meta_json,
                 )
                 db.add(planner_msg)
 
@@ -318,6 +363,7 @@ async def chat(
             # Send final parsed data
             done_data = json.dumps(
                 {
+                    "id": planner_msg.id,
                     "message": parsed.message,
                     "questions": [
                         {

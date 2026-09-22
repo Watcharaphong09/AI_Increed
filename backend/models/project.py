@@ -12,6 +12,7 @@ Tables:
 import enum
 import uuid
 from datetime import datetime, timezone
+from typing import Optional
 
 from sqlalchemy import (
     DateTime,
@@ -208,6 +209,7 @@ class Message(Base):
         Enum(MessageRole), nullable=False
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    metadata_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow
     )

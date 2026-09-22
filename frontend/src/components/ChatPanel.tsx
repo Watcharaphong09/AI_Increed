@@ -224,8 +224,24 @@ export default function ChatPanel() {
   })
 
   useEffect(() => {
-    if (fetchedMessages) setMessages(fetchedMessages)
-  }, [fetchedMessages, setMessages])
+    if (fetchedMessages) {
+      setMessages(fetchedMessages)
+      fetchedMessages.forEach((m) => {
+        if (m.metadata_json) {
+          try {
+            const parsed = JSON.parse(m.metadata_json)
+            mergeMessageMeta(m.id, {
+              questions: parsed.questions || [],
+              suggestions: parsed.suggestions || [],
+              conflicts: parsed.conflicts || [],
+            })
+          } catch {
+            // ignore JSON parse error
+          }
+        }
+      })
+    }
+  }, [fetchedMessages, setMessages, mergeMessageMeta])
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -260,7 +276,7 @@ export default function ChatPanel() {
     onSuccess: (response) => {
       clearLoadingTimeout()
       const plannerMessage: Message = {
-        id: Date.now().toString(),
+        id: response.id || Date.now().toString(),
         role: 'planner',
         content: response.message,
         created_at: new Date().toISOString(),
@@ -376,7 +392,19 @@ export default function ChatPanel() {
         )}
 
         {messages.map((msg) => {
-          const meta = messageMeta[msg.id]
+          let meta = messageMeta[msg.id]
+          if (!meta && msg.metadata_json) {
+            try {
+              const parsed = JSON.parse(msg.metadata_json)
+              meta = {
+                questions: parsed.questions || [],
+                suggestions: parsed.suggestions || [],
+                conflicts: parsed.conflicts || [],
+              }
+            } catch {
+              // ignore
+            }
+          }
           return (
             <MessageBubble
               key={msg.id}

@@ -53,6 +53,7 @@ export interface Message {
   id: string
   role: 'user' | 'planner'
   content: string
+  metadata_json?: string | null
   created_at: string
 }
 
@@ -63,6 +64,7 @@ export interface Question {
 }
 
 export interface PlannerResponse {
+  id?: string
   message: string
   questions: Question[]
   suggestions: string[]

@@ -20,16 +20,25 @@ export default function TasksPanel({
 
 
   // Fetch tasks from API whenever project changes
-  const { data: fetchedTasks = [], isLoading, refetch } = useQuery({
+  const { data: fetchedTasks, isLoading, refetch } = useQuery({
     queryKey: ['tasks', currentProject?.id],
     queryFn: () => listTasks(currentProject!.id),
     enabled: !!currentProject,
     staleTime: 10_000,
   })
 
-  // Sync to global store
+  // Safe tasks array: prioritize fetched data, fallback to store, fallback to empty array
+  const taskItems: Task[] = Array.isArray(fetchedTasks)
+    ? fetchedTasks
+    : Array.isArray(tasks)
+    ? tasks
+    : []
+
+  // Sync to global store only when actual data is received from API
   useEffect(() => {
-    if (fetchedTasks.length >= 0) setTasks(fetchedTasks)
+    if (fetchedTasks && Array.isArray(fetchedTasks)) {
+      setTasks(fetchedTasks)
+    }
   }, [fetchedTasks, setTasks])
 
   if (!currentProject) {
@@ -99,7 +108,7 @@ export default function TasksPanel({
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs font-mono text-gray-400 bg-gray-800/80 px-2.5 py-1 rounded-md border border-gray-700">
-            {tasks.filter((t) => t.status === 'COMPLETED' || t.status === 'DONE').length}/{tasks.length} เสร็จแล้ว
+            {taskItems.filter((t) => t.status === 'COMPLETED' || t.status === 'DONE').length}/{taskItems.length} เสร็จแล้ว
           </span>
           {/* Open workspace folder button */}
           <button
@@ -134,7 +143,7 @@ export default function TasksPanel({
             <div key={i} className="h-24 bg-gray-800/40 rounded-xl animate-pulse" />
           ))}
         </div>
-      ) : tasks.length === 0 ? (
+      ) : taskItems.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-center space-y-3">
           <FileText className="w-10 h-10 text-gray-600" />
           <p className="text-sm text-gray-400 font-medium">
@@ -146,12 +155,13 @@ export default function TasksPanel({
         </div>
       ) : (
         <div className="grid gap-3">
-          {tasks.map((task) => {
+          {taskItems.map((task) => {
             const isCompleted = task.status === 'COMPLETED' || task.status === 'DONE'
             const isBuilding =
               task.status === 'BUILDING' ||
               task.status === 'HANDED_OFF' ||
               task.status === 'IN_PROGRESS'
+            const taskNumStr = (task.task_number ?? 0).toString().padStart(3, '0')
 
             return (
               <div
@@ -167,7 +177,7 @@ export default function TasksPanel({
                   <div className="space-y-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-xs font-bold text-blue-400 px-2 py-0.5 rounded bg-blue-950/80 border border-blue-800/60">
-                        TASK-{task.task_number.toString().padStart(3, '0')}
+                        TASK-{taskNumStr}
                       </span>
                       <h3 className="text-sm font-semibold text-gray-100 truncate">
                         {task.title}
